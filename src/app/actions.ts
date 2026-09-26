@@ -13,7 +13,8 @@ import { db } from "@/lib/server/db";
 import { ActionError } from "@/lib/server/errors";
 import * as messages from "@/lib/server/messages";
 import type { MessageDTO } from "@/lib/server/messages";
-import { demoLoginEnabled, endSession, requireUser, startSession } from "@/lib/server/session";
+import { requestLoginLink, signInWithToken } from "@/lib/server/auth";
+import { endSession, requireSignedIn, requireUser } from "@/lib/server/session";
 
 /** Runs an action. A user-facing error sends the user back to `path` with the message. */
 async function run<T>(path: string, fn: () => Promise<T>): Promise<T> {
@@ -46,15 +47,23 @@ const utcDate = z
 
 // ── Session ────────────────────────────────────────────────────────────
 
-export async function login(form: FormData) {
-  if (!demoLoginEnabled()) redirect("/login?error=Sign-in%20is%20not%20available");
-  const { email, name } = parse(
-    z.object({ email: z.email().toLowerCase(), name: z.string().trim().min(1).max(80) }),
-    form,
-    "/login",
-  );
-  const user = await db.user.upsert({ where: { email }, update: {}, create: { email, name } });
-  await startSession(user.id);
+export async function requestLogin(form: FormData) {
+  const { email } = parse(z.object({ email: z.email().toLowerCase() }), form, "/login");
+  const devLink = await run("/login", () => requestLoginLink(email));
+  const qs = new URLSearchParams({ email });
+  if (devLink) qs.set("dev", devLink);
+  redirect(`/login/check?${qs}`);
+}
+
+export async function verifyLogin(token: string) {
+  const user = await run("/login", () => signInWithToken(token));
+  redirect(user.name ? "/dashboard" : "/welcome");
+}
+
+export async function completeProfile(form: FormData) {
+  const user = await requireSignedIn();
+  const { name } = parse(z.object({ name: z.string().trim().min(1).max(80) }), form, "/welcome");
+  await db.user.update({ where: { id: user.id }, data: { name } });
   redirect("/dashboard");
 }
 

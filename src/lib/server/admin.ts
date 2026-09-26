@@ -8,7 +8,7 @@ import { refundSender } from "./escrow";
 import { assert } from "./errors";
 import { postSystemMessage } from "./messages";
 import { formatMoney, type Currency } from "@/lib/domain/locations";
-import { requireUser } from "./session";
+import { endAllSessions, requireUser } from "./session";
 
 export async function requireAdmin() {
   const user = await requireUser();
@@ -164,4 +164,5 @@ export async function setSuspended(admin: User, userId: string, suspended: boole
       reason,
     });
   });
+  if (suspended) await endAllSessions(userId);
 }

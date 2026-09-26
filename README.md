@@ -17,7 +17,7 @@ See [`docs/PRODUCT.md`](docs/PRODUCT.md) for the product brief and the business 
 
 ```bash
 npm install
-cp .env.example .env          # then fill in DATABASE_URL and SESSION_SECRET
+cp .env.example .env          # then fill in DATABASE_URL
 npm run db:migrate            # create the schema
 npm run dev
 ```
@@ -27,8 +27,21 @@ verification and payout onboarding complete straight away with fake ids, so you 
 walk through the whole flow locally. Use two browsers (or a private window) to act as
 sender and traveller at the same time.
 
-Sign-in is a passwordless development stand-in: enter any name and email. It is off in
-production unless `ALLOW_DEMO_LOGIN=true`.
+## Sign-in
+
+Passwordless email links, used for both sign-up and sign-in.
+
+1. The user enters an email, and Ajo emails a single-use link that expires after 15 minutes.
+   Each email gets at most 5 links per hour.
+2. The link opens a page with a **Continue** button. Signing in on page load would let email
+   security scanners, which open links, use up the token.
+3. New users choose their display name on `/welcome`.
+
+Only SHA-256 hashes of link and session tokens are stored. Sessions live in the database
+for 30 days. Signing out deletes the session, and suspending a user deletes all of theirs.
+
+In development without `RESEND_API_KEY`, the "check your email" page shows the link
+directly so you can sign in locally. In production, sign-in needs Resend configured.
 
 ## Scripts
 

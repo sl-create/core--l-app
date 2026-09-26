@@ -113,6 +113,7 @@ model User {
   auditLogs        AuditLog[]
   messages         Message[]
   messageReads     MessageRead[]
+  sessions         Session[]
 }
 
 model Trip {
@@ -269,4 +270,28 @@ model MessageRead {
   lastReadAt DateTime
 
   @@id([bookingId, userId])
+}
+
+/// A single-use sign-in link. Only a hash of the token is stored.
+model LoginToken {
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, createdAt])
+}
+
+/// A signed-in browser. Deleting the row signs that browser out.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

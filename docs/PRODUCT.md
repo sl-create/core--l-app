@@ -88,6 +88,10 @@ A dispute freezes the booking for manual review.
 - Admins can change trust tiers and suspend accounts. Every admin action is written to an
   audit log with a required reason.
 
+### Accounts
+- Passwordless sign-in with single-use email links (15 minutes, at most 5 per hour).
+- New accounts pick a display name, which should match their ID for verification.
+
 ### Messaging
 - Each booking has one thread between the sender and traveller. Ajo support can join as
   admins, and support messages are labelled.
@@ -97,7 +101,6 @@ A dispute freezes the booking for manual review.
   filtered for phone numbers or emails.
 
 ## Not built yet
-- Real authentication (email magic links); sign-in is a development stand-in
 - Split refunds (a partial release to the traveller) in dispute resolution
 - Photo attachments in messages (proof for milestones)
 - SMS/WhatsApp notifications and per-user notification settings
