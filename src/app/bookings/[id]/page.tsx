@@ -17,6 +17,8 @@ import { DOCUMENT_LABELS } from "@/lib/domain/documents";
 import { MILESTONE_LABELS } from "@/lib/domain/milestones";
 import { db } from "@/lib/server/db";
 import { paymentsSimulated } from "@/lib/server/escrow";
+import { listMessages, markRead, MAX_MESSAGE_LENGTH } from "@/lib/server/messages";
+import { MessageThread } from "@/components/message-thread";
 import { requireUser } from "@/lib/server/session";
 import {
   ErrorBanner,
@@ -48,6 +50,9 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   const isTraveller = trip.travellerId === user.id;
   // Admins can look at any booking but cannot act on it from here.
   if (!isSender && !isTraveller && user.role !== "ADMIN") notFound();
+
+  const messages = await listMessages(booking.id);
+  if (isSender || isTraveller) await markRead(user.id, booking.id);
 
   const money = (amount: number) => <Money amount={amount} currency={booking.currency} />;
   const pickedUp = booking.milestones.some((m) => m.type === "PICKED_UP" && m.status !== "PENDING");
@@ -238,6 +243,20 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
           ))}
         </section>
       )}
+
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">Messages</h2>
+        <MessageThread
+          bookingId={booking.id}
+          userId={user.id}
+          initial={messages}
+          canPost={isSender || isTraveller || user.role === "ADMIN"}
+          maxLength={MAX_MESSAGE_LENGTH}
+        />
+        {user.role === "ADMIN" && !isSender && !isTraveller && (
+          <p className="hint">You are viewing as an admin. Messages you send appear as Ajo support.</p>
+        )}
+      </section>
 
       {canCancel && (
         <section className="card">

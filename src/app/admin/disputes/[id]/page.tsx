@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { resolveDispute } from "../../actions";
 import { DOCUMENT_LABELS } from "@/lib/domain/documents";
 import { MILESTONE_LABELS } from "@/lib/domain/milestones";
-import { refundableAmount } from "@/lib/server/admin";
+import { refundableAmount, requireAdmin } from "@/lib/server/admin";
+import { listMessages, MAX_MESSAGE_LENGTH } from "@/lib/server/messages";
+import { MessageThread } from "@/components/message-thread";
 import { db } from "@/lib/server/db";
 import { ErrorBanner, Field, formatUtc, Money, PageHeader, Route, StatusBadge, TrustBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -26,6 +28,8 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
     },
   });
   if (!dispute) notFound();
+  const me = await requireAdmin();
+  const messages = await listMessages(dispute.bookingId);
   const { booking } = dispute;
   const { request, trip } = booking;
   const money = (n: number) => <Money amount={n} currency={booking.currency} />;
@@ -92,6 +96,18 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
         <p className="mt-4 text-sm">
           <Link href={`/bookings/${booking.id}`} className="link">Open booking page →</Link>
         </p>
+      </section>
+
+      <section>
+        <h2 className="mb-3 font-semibold">Conversation</h2>
+        <MessageThread
+          bookingId={dispute.bookingId}
+          userId={me.id}
+          initial={messages}
+          canPost
+          maxLength={MAX_MESSAGE_LENGTH}
+        />
+        <p className="hint">Your messages appear to both parties as Ajo support.</p>
       </section>
 
       {dispute.status === "OPEN" ? (

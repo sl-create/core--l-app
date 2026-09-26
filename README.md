@@ -55,6 +55,9 @@ src/lib/domain/     Pure business rules, no I/O and fully unit tested
 src/lib/server/     Database, session, Stripe and the booking state machine
   bookings.ts       propose → accept → fund → claim/confirm milestones → complete
   escrow.ts         Stripe separate charges & transfers (or simulated)
+  messages.ts       Booking threads, system messages, unread counts
+  notify.ts         Email notifications, sent after the response
+  admin.ts          Dispute resolution, trust tiers, suspension, audit log
 src/app/            Pages, server actions (actions.ts) and API routes
 ```
 
@@ -85,6 +88,20 @@ Grant the role with `npm run admin:grant -- you@example.com` after that person h
 - **Users**: search, change trust tier, suspend or lift a suspension. Suspended users are
   signed out and their trips disappear from matching.
 - **Audit log**: every admin action with who, when and why. Reasons are required.
+
+## Messaging
+
+Every booking has one thread shared by the sender, the traveller and Ajo support (admins).
+
+- **System messages**: each state change (proposed, accepted, paid, milestone claimed,
+  confirmed, disputed, resolved, cancelled, completed) is posted into the thread, so the
+  thread doubles as the booking history, and the relevant party is emailed.
+- **Delivery**: the thread asks `GET /api/bookings/:id/messages?after=` every 5 seconds
+  while the tab is visible. It's simple and works on any host. Swap in SSE or websockets later.
+- **Unread counts** are tracked per user per booking (`MessageRead`) and shown on the dashboard.
+- **Email** (`src/lib/server/mailer.ts`) uses Resend when `RESEND_API_KEY` is set, and
+  otherwise prints to the server log. A chat message is emailed only when it is the first
+  one the recipient hasn't read yet, so conversations don't flood inboxes.
 
 ## Stripe setup
 

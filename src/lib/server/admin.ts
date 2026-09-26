@@ -6,6 +6,8 @@ import { completeIfDone, payOut } from "./bookings";
 import { db } from "./db";
 import { refundSender } from "./escrow";
 import { assert } from "./errors";
+import { postSystemMessage } from "./messages";
+import { formatMoney, type Currency } from "@/lib/domain/locations";
 import { requireUser } from "./session";
 
 export async function requireAdmin() {
@@ -52,6 +54,7 @@ export async function releaseDispute(admin: User, disputeId: string, note: strin
     await audit(tx, admin, "dispute.release", { type: "Dispute", id: disputeId }, { note });
   });
   await payOut(dispute.milestoneId);
+  await announceResolution(dispute.bookingId, `The Ajo team reviewed the dispute and confirmed the milestone. The payment has been released and the journey continues. Note from Ajo: ${note.trim()}`);
   await completeIfDone(dispute.milestoneId);
 }
 
@@ -117,6 +120,21 @@ export async function refundDispute(
       amount,
       includeServiceFee,
     });
+  });
+  await announceResolution(
+    booking.id,
+    `The Ajo team reviewed the dispute and refunded ${formatMoney(amount, booking.currency as Currency)} to the sender. This booking is closed. Note from Ajo: ${note.trim()}`,
+  );
+}
+
+async function announceResolution(bookingId: string, body: string) {
+  const b = await db.booking.findUniqueOrThrow({
+    where: { id: bookingId },
+    select: { request: { select: { senderId: true } }, trip: { select: { travellerId: true } } },
+  });
+  await postSystemMessage(bookingId, body, {
+    userIds: [b.request.senderId, b.trip.travellerId],
+    subject: "Your dispute has been resolved",
   });
 }
 

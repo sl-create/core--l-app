@@ -80,6 +80,12 @@ enum DisputeOutcome {
   REFUNDED_TO_SENDER // escrow still held goes back to the sender, and the booking ends
 }
 
+enum MessageKind {
+  USER // written by the sender or traveller
+  SYSTEM // automatic update about the booking
+  SUPPORT // written by an Ajo admin
+}
+
 enum MilestoneStatus {
   PENDING
   CLAIMED // traveller says it happened, claim window running
@@ -105,6 +111,8 @@ model User {
   disputesOpened   Dispute[]         @relation("DisputeOpenedBy")
   disputesResolved Dispute[]         @relation("DisputeResolvedBy")
   auditLogs        AuditLog[]
+  messages         Message[]
+  messageReads     MessageRead[]
 }
 
 model Trip {
@@ -176,6 +184,8 @@ model Booking {
 
   milestones Milestone[]
   disputes   Dispute[]
+  messages   Message[]
+  reads      MessageRead[]
 
   @@index([tripId])
   @@index([requestId])
@@ -235,4 +245,28 @@ model AuditLog {
 
   @@index([targetType, targetId])
   @@index([createdAt])
+}
+
+/// One thread per booking, shared by the sender, the traveller and Ajo support.
+model Message {
+  id        String      @id @default(cuid())
+  bookingId String
+  booking   Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  authorId  String? // null for system messages
+  author    User?       @relation(fields: [authorId], references: [id])
+  kind      MessageKind
+  body      String
+  createdAt DateTime    @default(now())
+
+  @@index([bookingId, createdAt])
+}
+
+model MessageRead {
+  bookingId  String
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  lastReadAt DateTime
+
+  @@id([bookingId, userId])
 }

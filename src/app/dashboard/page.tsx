@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { DOCUMENT_LABELS } from "@/lib/domain/documents";
 import { db } from "@/lib/server/db";
+import { unreadCounts } from "@/lib/server/messages";
 import { requireUser } from "@/lib/server/session";
 import { formatUtc, PageHeader, Route, StatusBadge } from "@/components/ui";
 
 export default async function Dashboard() {
   const user = await requireUser();
-  const [requests, trips, toAccept, toPay, toConfirm] = await Promise.all([
+  const [requests, trips, toAccept, toPay, toConfirm, unread] = await Promise.all([
     db.deliveryRequest.findMany({
       where: { senderId: user.id },
       orderBy: { createdAt: "desc" },
@@ -27,9 +28,14 @@ export default async function Dashboard() {
       where: { status: "CLAIMED", booking: { request: { senderId: user.id } } },
       select: { bookingId: true },
     }),
+    unreadCounts(user.id),
   ]);
 
   const actions = [
+    ...[...unread].map(([bookingId, n]) => ({
+      href: `/bookings/${bookingId}`,
+      text: `${n} unread message${n > 1 ? "s" : ""} on a booking.`,
+    })),
     ...toPay.map((b) => ({ href: `/bookings/${b.id}`, text: "A traveller accepted your booking. Pay to confirm it." })),
     ...toConfirm.map((m) => ({ href: `/bookings/${m.bookingId}`, text: "A milestone is waiting for your confirmation." })),
   ];

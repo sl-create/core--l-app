@@ -1,19 +1,6 @@
+import { formatUtc } from "@/lib/format";
 import { formatMoney, LOCATION_LABELS, type Currency, type Location } from "@/lib/domain/locations";
 import { TRUST_TIER_LABELS, type TrustTier } from "@/lib/domain/trust";
-
-export function formatUtc(date: Date): string {
-  return (
-    new Intl.DateTimeFormat("en-GB", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "UTC",
-    }).format(date) + " UTC"
-  );
-}
 
 export function Money({ amount, currency }: { amount: number; currency: string }) {
   return <>{formatMoney(amount, currency as Currency)}</>;
@@ -108,3 +95,5 @@ export function Field({ label, children }: { label: string; children: React.Reac
     </div>
   );
 }
+
+export { formatUtc };

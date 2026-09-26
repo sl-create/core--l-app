@@ -11,6 +11,8 @@ import { startIdentityVerification, startPayoutOnboarding } from "@/lib/server/a
 import * as bookings from "@/lib/server/bookings";
 import { db } from "@/lib/server/db";
 import { ActionError } from "@/lib/server/errors";
+import * as messages from "@/lib/server/messages";
+import type { MessageDTO } from "@/lib/server/messages";
 import { demoLoginEnabled, endSession, requireUser, startSession } from "@/lib/server/session";
 
 /** Runs an action. A user-facing error sends the user back to `path` with the message. */
@@ -226,4 +228,19 @@ export async function disputeMilestone(bookingId: string, milestoneId: string, f
   const note = String(form.get("note") ?? "").slice(0, 1000);
   await run(path, () => bookings.disputeMilestone(user.id, milestoneId, note));
   revalidatePath(path);
+}
+
+// ── Messages ───────────────────────────────────────────────────────────
+
+export async function sendMessage(
+  bookingId: string,
+  body: string,
+): Promise<{ message: MessageDTO } | { error: string }> {
+  const user = await requireUser();
+  try {
+    return { message: await messages.sendMessage(user, bookingId, body) };
+  } catch (err) {
+    if (err instanceof ActionError) return { error: err.message };
+    throw err;
+  }
 }

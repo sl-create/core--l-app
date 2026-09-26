@@ -2,9 +2,9 @@ import "server-only";
 import type { BookingStatus, Prisma } from "@prisma/client";
 import { senderCancellationRefund, travellerCancellationRefund } from "@/lib/domain/cancellation";
 import { DOCUMENT_LABELS } from "@/lib/domain/documents";
-import { LOCATION_LABELS } from "@/lib/domain/locations";
+import { formatMoney, LOCATION_LABELS, type Currency } from "@/lib/domain/locations";
 import { ineligibilityReasons } from "@/lib/domain/matching";
-import { MILESTONE_TYPES, milestonePayouts } from "@/lib/domain/milestones";
+import { MILESTONE_LABELS, MILESTONE_TYPES, milestonePayouts } from "@/lib/domain/milestones";
 import { quote } from "@/lib/domain/pricing";
 import { earnedTier } from "@/lib/domain/trust";
 import { claimWindowEndsAt } from "@/lib/domain/urgency";
@@ -17,6 +17,8 @@ import {
   transferToTraveller,
 } from "./escrow";
 import { ActionError, assert } from "./errors";
+import { postSystemMessage } from "./messages";
+import { formatUtc } from "@/lib/format";
 
 /** Bookings in these states hold a seat on the trip. */
 export const SEAT_HOLDING: BookingStatus[] = ["ACCEPTED", "FUNDED", "COMPLETED", "DISPUTED"];
@@ -33,6 +35,19 @@ const withParties = {
   milestones: { orderBy: { sequence: "asc" } },
 } satisfies Prisma.BookingInclude;
 
+async function parties(bookingId: string) {
+  const b = await db.booking.findUniqueOrThrow({
+    where: { id: bookingId },
+    select: {
+      currency: true,
+      request: { select: { sender: true } },
+      trip: { select: { traveller: true } },
+    },
+  });
+  const money = (amount: number) => formatMoney(amount, b.currency as Currency);
+  return { sender: b.request.sender, traveller: b.trip.traveller, money };
+}
+
 async function loadBooking(bookingId: string) {
   const booking = await db.booking.findUnique({ where: { id: bookingId }, include: withParties });
   assert(booking, "Booking not found");
@@ -40,7 +55,7 @@ async function loadBooking(bookingId: string) {
 }
 
 export async function proposeBooking(senderId: string, requestId: string, tripId: string) {
-  return db.$transaction(async (tx) => {
+  const booking = await db.$transaction(async (tx) => {
     const request = await tx.deliveryRequest.findUnique({ where: { id: requestId } });
     assert(request && request.senderId === senderId, "Request not found");
     assert(request.status === "OPEN", "This request is no longer open");
@@ -72,6 +87,13 @@ export async function proposeBooking(senderId: string, requestId: string, tripId
       },
     });
   });
+  const { sender, traveller, money } = await parties(booking.id);
+  await postSystemMessage(
+    booking.id,
+    `${sender.name} asked ${traveller.name} to carry this document for ${money(booking.travellerPayout)}.`,
+    { userIds: [traveller.id], subject: `New booking request from ${sender.name}` },
+  );
+  return booking;
 }
 
 export async function acceptBooking(travellerId: string, bookingId: string) {
@@ -96,6 +118,12 @@ export async function acceptBooking(travellerId: string, bookingId: string) {
     });
     assert(count === 1, "This booking can no longer be accepted");
   });
+  const { sender, traveller } = await parties(bookingId);
+  await postSystemMessage(
+    bookingId,
+    `${traveller.name} accepted. Waiting for ${sender.name} to pay.`,
+    { userIds: [sender.id], subject: `${traveller.name} accepted your booking` },
+  );
 }
 
 export async function declineBooking(travellerId: string, bookingId: string) {
@@ -104,6 +132,11 @@ export async function declineBooking(travellerId: string, bookingId: string) {
     data: { status: "DECLINED" },
   });
   assert(count === 1, "This booking can no longer be declined");
+  const { sender, traveller } = await parties(bookingId);
+  await postSystemMessage(bookingId, `${traveller.name} declined this request.`, {
+    userIds: [sender.id],
+    subject: `${traveller.name} declined your booking`,
+  });
 }
 
 /** Starts payment. Returns a URL to redirect to, or null once a simulated payment is funded. */
@@ -127,10 +160,12 @@ export async function startPayment(senderId: string, bookingId: string): Promise
  * checkout page was open). The caller must then refund the payment.
  */
 export async function markFunded(bookingId: string, paymentIntentId: string): Promise<boolean> {
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const booking = await tx.booking.findUnique({ where: { id: bookingId } });
-    if (!booking) return false;
-    if (booking.status !== "ACCEPTED") return booking.paymentIntentId === paymentIntentId;
+    if (!booking) return "invalid";
+    if (booking.status !== "ACCEPTED") {
+      return booking.paymentIntentId === paymentIntentId ? "already" : "invalid";
+    }
     const payouts = milestonePayouts(booking.travellerPayout);
     await tx.booking.update({
       where: { id: bookingId },
@@ -147,8 +182,17 @@ export async function markFunded(bookingId: string, paymentIntentId: string): Pr
       where: { id: booking.requestId },
       data: { status: "BOOKED" },
     });
-    return true;
+    return "funded";
   });
+  if (result === "funded") {
+    const { sender, traveller } = await parties(bookingId);
+    await postSystemMessage(
+      bookingId,
+      `Payment received and held in escrow. ${traveller.name}, use this thread to arrange the handover with ${sender.name}.`,
+      { userIds: [traveller.id], subject: "Booking paid: arrange the handover" },
+    );
+  }
+  return result !== "invalid";
 }
 
 export async function claimMilestone(travellerId: string, milestoneId: string, note?: string) {
@@ -165,16 +209,19 @@ export async function claimMilestone(travellerId: string, milestoneId: string, n
   assert(!earlierPending, "Claim the earlier milestones first");
 
   const now = new Date();
+  const claimExpiresAt = claimWindowEndsAt(milestone.booking.request.deadline, now);
   const { count } = await db.milestone.updateMany({
     where: { id: milestoneId, status: "PENDING" },
-    data: {
-      status: "CLAIMED",
-      note: note || null,
-      claimedAt: now,
-      claimExpiresAt: claimWindowEndsAt(milestone.booking.request.deadline, now),
-    },
+    data: { status: "CLAIMED", note: note || null, claimedAt: now, claimExpiresAt },
   });
   assert(count === 1, "This milestone has already been claimed");
+  const { sender, traveller } = await parties(milestone.bookingId);
+  const label = MILESTONE_LABELS[milestone.type];
+  await postSystemMessage(
+    milestone.bookingId,
+    `${traveller.name} marked "${label}" as done${note ? ` ("${note}")` : ""}. ${sender.name}, please confirm or dispute by ${formatUtc(claimExpiresAt)}, or it confirms automatically.`,
+    { userIds: [sender.id], subject: `Please confirm: ${label}` },
+  );
 }
 
 export async function confirmMilestone(senderId: string, milestoneId: string) {
@@ -184,7 +231,7 @@ export async function confirmMilestone(senderId: string, milestoneId: string) {
   });
   assert(milestone && milestone.booking.request.senderId === senderId, "Milestone not found");
   assert(milestone.status === "CLAIMED", "This milestone is not waiting for confirmation");
-  await releaseMilestone(milestoneId);
+  await releaseMilestone(milestoneId, "sender");
 }
 
 export async function disputeMilestone(senderId: string, milestoneId: string, reason: string) {
@@ -194,7 +241,7 @@ export async function disputeMilestone(senderId: string, milestoneId: string, re
   });
   assert(milestone && milestone.booking.request.senderId === senderId, "Milestone not found");
   assert(reason.trim().length > 0, "Tell us what went wrong");
-  return db.$transaction(async (tx) => {
+  const dispute = await db.$transaction(async (tx) => {
     const { count } = await tx.milestone.updateMany({
       where: { id: milestoneId, status: "CLAIMED" },
       data: { status: "DISPUTED" },
@@ -210,6 +257,13 @@ export async function disputeMilestone(senderId: string, milestoneId: string, re
       },
     });
   });
+  const { sender, traveller } = await parties(milestone.bookingId);
+  await postSystemMessage(
+    milestone.bookingId,
+    `${sender.name} disputed "${MILESTONE_LABELS[milestone.type]}": "${dispute.reason}". Payments are paused while the Ajo team reviews. You can both add details here.`,
+    { userIds: [traveller.id], subject: "A milestone on your booking was disputed" },
+  );
+  return dispute;
 }
 
 /**
@@ -217,13 +271,20 @@ export async function disputeMilestone(senderId: string, milestoneId: string, re
  * committed first, so money is never released twice. If the transfer fails,
  * `retryFailedTransfers` picks it up.
  */
-async function releaseMilestone(milestoneId: string) {
+async function releaseMilestone(milestoneId: string, by: "sender" | "timer") {
   const { count } = await db.milestone.updateMany({
     where: { id: milestoneId, status: "CLAIMED" },
     data: { status: "CONFIRMED", confirmedAt: new Date() },
   });
   if (count === 0) return;
   await payOut(milestoneId);
+  const milestone = await db.milestone.findUniqueOrThrow({ where: { id: milestoneId } });
+  const { traveller, money } = await parties(milestone.bookingId);
+  await postSystemMessage(
+    milestone.bookingId,
+    `"${MILESTONE_LABELS[milestone.type]}" confirmed${by === "timer" ? " automatically after the claim window ended" : ""}. ${money(milestone.payout)} released to ${traveller.name}.`,
+    { userIds: [traveller.id], subject: `Payment released: ${money(milestone.payout)}` },
+  );
   await completeIfDone(milestoneId);
 }
 
@@ -247,16 +308,16 @@ export async function payOut(milestoneId: string) {
 
 export async function completeIfDone(milestoneId: string) {
   const { bookingId } = await db.milestone.findUniqueOrThrow({ where: { id: milestoneId } });
-  await db.$transaction(async (tx) => {
+  const completed = await db.$transaction(async (tx) => {
     const remaining = await tx.milestone.count({
       where: { bookingId, status: { not: "CONFIRMED" } },
     });
-    if (remaining > 0) return;
+    if (remaining > 0) return false;
     const { count } = await tx.booking.updateMany({
       where: { id: bookingId, status: "FUNDED" },
       data: { status: "COMPLETED" },
     });
-    if (count === 0) return;
+    if (count === 0) return false;
     const booking = await tx.booking.findUniqueOrThrow({
       where: { id: bookingId },
       include: { trip: { include: { traveller: true } } },
@@ -277,7 +338,15 @@ export async function completeIfDone(milestoneId: string) {
         }),
       },
     });
+    return true;
   });
+  if (completed) {
+    const { sender, traveller } = await parties(bookingId);
+    await postSystemMessage(bookingId, "Delivery complete. Thank you both for using Ajo!", {
+      userIds: [sender.id, traveller.id],
+      subject: "Delivery complete",
+    });
+  }
 }
 
 /** Auto-confirms claims whose window has lapsed. Run on a schedule. */
@@ -286,7 +355,7 @@ export async function releaseExpiredClaims(now: Date = new Date()) {
     where: { status: "CLAIMED", claimExpiresAt: { lte: now }, booking: { status: "FUNDED" } },
     select: { id: true },
   });
-  for (const { id } of expired) await releaseMilestone(id);
+  for (const { id } of expired) await releaseMilestone(id, "timer");
   return expired.length;
 }
 
@@ -304,6 +373,13 @@ export async function cancelBooking(userId: string, bookingId: string) {
   const isSender = booking.request.senderId === userId;
   const isTraveller = booking.trip.travellerId === userId;
   assert(isSender || isTraveller, "Booking not found");
+  const actor = isSender ? booking.request.sender : booking.trip.traveller;
+  const other = isSender ? booking.trip.traveller : booking.request.sender;
+  const announce = (extra = "") =>
+    postSystemMessage(bookingId, `${actor.name} cancelled this booking.${extra}`, {
+      userIds: [other.id],
+      subject: `${actor.name} cancelled your booking`,
+    });
 
   if (booking.status === "PROPOSED" || booking.status === "ACCEPTED") {
     const { count } = await db.booking.updateMany({
@@ -315,6 +391,7 @@ export async function cancelBooking(userId: string, bookingId: string) {
       },
     });
     assert(count === 1, "This booking has changed, refresh and try again");
+    await announce();
     return;
   }
 
@@ -358,6 +435,11 @@ export async function cancelBooking(userId: string, bookingId: string) {
       idempotencyKey: `cancel-${booking.id}`,
     });
   }
+  const money = (n: number) => formatMoney(n, booking.currency as Currency);
+  await announce(
+    ` ${money(refund.total)} refunded to ${booking.request.sender.name}` +
+      (compensation > 0 ? `, ${money(compensation)} paid to ${booking.trip.traveller.name}.` : "."),
+  );
   return refund;
 }
 
