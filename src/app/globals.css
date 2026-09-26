@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf7f2;
+  --surface: #ffffff;
+  --foreground: #1c1917;
+  --muted: #78716c;
+  --border: #e7e2d9;
+  --brand: #0b7a4b;
+  --brand-strong: #075c38;
+  --brand-soft: #e3f3ea;
+  --accent: #d97706;
+  --danger: #b91c1c;
+  --danger-soft: #fdecec;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #14120f;
+    --surface: #1d1a16;
+    --foreground: #f2efe9;
+    --muted: #a8a29e;
+    --border: #34302a;
+    --brand: #34b27b;
+    --brand-strong: #5fd39f;
+    --brand-soft: #16301f;
+    --accent: #f59e0b;
+    --danger: #f87171;
+    --danger-soft: #3a1a1a;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@utility card {
+  @apply rounded-2xl border border-border bg-surface p-5;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-brand text-white hover:bg-brand-strong dark:text-black;
+}
+@utility btn-secondary {
+  @apply btn border border-border bg-surface hover:bg-background;
+}
+@utility btn-danger {
+  @apply btn border border-danger/40 text-danger hover:bg-danger-soft;
+}
+@utility label {
+  @apply mb-1 block text-sm font-medium;
+}
+@utility input {
+  @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20;
+}
+@utility hint {
+  @apply mt-1 text-xs text-muted;
+}
+@utility link {
+  @apply font-medium text-brand underline-offset-4 hover:underline;
+}

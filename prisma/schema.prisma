@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum values mirror the string unions in src/lib/domain.
+
+enum Location {
+  LAGOS
+  LONDON
+  NEW_YORK
+}
+
+enum TrustTier {
+  UNVERIFIED
+  ID_VERIFIED
+  AJO_VERIFIED
+}
+
+enum DocumentType {
+  BIRTH_CERTIFICATE
+  MARRIAGE_CERTIFICATE
+  NIN_SLIP
+  UNIVERSITY_CERTIFICATE
+  TRANSCRIPT
+  OTHER
+}
+
+enum CancellationPolicy {
+  FLEXIBLE
+  MODERATE
+  STRICT
+}
+
+enum TripStatus {
+  OPEN
+  CANCELLED
+  COMPLETED
+}
+
+enum RequestStatus {
+  OPEN
+  BOOKED
+  DELIVERED
+  CANCELLED
+}
+
+enum BookingStatus {
+  PROPOSED // sender asked, traveller has not answered
+  DECLINED
+  ACCEPTED // traveller agreed, waiting for the sender to pay
+  FUNDED // payment is held in escrow
+  COMPLETED // every milestone confirmed and paid out
+  CANCELLED
+  DISPUTED
+}
+
+enum MilestoneType {
+  PICKED_UP
+  ARRIVED
+  DELIVERED
+}
+
+enum MilestoneStatus {
+  PENDING
+  CLAIMED // traveller says it happened, claim window running
+  CONFIRMED // sender confirmed, or the claim window lapsed
+  DISPUTED
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  name                String
+  trustTier           TrustTier @default(UNVERIFIED)
+  kycSessionId        String?
+  stripeAccountId     String? // Connect account that receives traveller payouts
+  completedDeliveries Int       @default(0)
+  upheldDisputes      Int       @default(0)
+  createdAt           DateTime  @default(now())
+
+  trips    Trip[]
+  requests DeliveryRequest[]
+}
+
+model Trip {
+  id                 String             @id @default(cuid())
+  travellerId        String
+  traveller          User               @relation(fields: [travellerId], references: [id])
+  origin             Location
+  destination        Location
+  departureAt        DateTime
+  arrivalAt          DateTime
+  capacity           Int                @default(1)
+  cancellationPolicy CancellationPolicy @default(MODERATE)
+  notes              String?
+  status             TripStatus         @default(OPEN)
+  createdAt          DateTime           @default(now())
+
+  bookings Booking[]
+
+  @@index([origin, destination, departureAt])
+}
+
+model DeliveryRequest {
+  id             String        @id @default(cuid())
+  senderId       String
+  sender         User          @relation(fields: [senderId], references: [id])
+  documentType   DocumentType
+  description    String?
+  origin         Location
+  destination    Location
+  availableFrom  DateTime
+  deadline       DateTime
+  minTrustTier   TrustTier     @default(ID_VERIFIED)
+  pickupCity     String
+  recipientName  String
+  recipientPhone String
+  status         RequestStatus @default(OPEN)
+  createdAt      DateTime      @default(now())
+
+  bookings Booking[]
+
+  @@index([origin, destination, deadline])
+}
+
+model Booking {
+  id        String          @id @default(cuid())
+  requestId String
+  request   DeliveryRequest @relation(fields: [requestId], references: [id])
+  tripId    String
+  trip      Trip            @relation(fields: [tripId], references: [id])
+  status    BookingStatus   @default(PROPOSED)
+
+  // Price is locked when the sender proposes.
+  currency           String
+  urgency            String
+  travellerPayout    Int
+  serviceFee         Int
+  total              Int
+  cancellationPolicy CancellationPolicy
+
+  paymentIntentId String? @unique
+  transferGroup   String  @unique @default(cuid())
+  refundedAmount  Int     @default(0)
+
+  proposedAt  DateTime  @default(now())
+  acceptedAt  DateTime?
+  fundedAt    DateTime?
+  cancelledAt DateTime?
+  cancelledBy String? // "SENDER" | "TRAVELLER"
+
+  milestones Milestone[]
+
+  @@index([tripId])
+  @@index([requestId])
+}
+
+model Milestone {
+  id             String          @id @default(cuid())
+  bookingId      String
+  booking        Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  type           MilestoneType
+  sequence       Int
+  payout         Int
+  status         MilestoneStatus @default(PENDING)
+  note           String?
+  claimedAt      DateTime?
+  claimExpiresAt DateTime?
+  confirmedAt    DateTime?
+  transferId     String?
+
+  @@unique([bookingId, type])
+  @@index([status, claimExpiresAt])
+}
