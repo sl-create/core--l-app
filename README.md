@@ -40,6 +40,7 @@ production unless `ALLOW_DEMO_LOGIN=true`.
 | `npm run lint`      | ESLint                              |
 | `npm run build`     | Production build                    |
 | `npm run db:deploy` | Apply migrations in production      |
+| `npm run admin:grant -- <email>` | Make an existing user an admin |
 
 ## Code map
 
@@ -71,6 +72,19 @@ Each funded booking has three milestones: **handed to traveller (25%)**, **lande
 and **delivered (50%)**. The traveller claims a milestone. The sender then has a claim
 window to confirm or dispute it, and when the window lapses the claim confirms
 automatically. Confirming a milestone transfers its share to the traveller.
+
+## Admin
+
+Admins see an **Admin** link in the header, and everyone else gets a 404 at `/admin`.
+Grant the role with `npm run admin:grant -- you@example.com` after that person has signed in once.
+
+- **Disputes**: see the complaint, the traveller's claim note and the escrow state, then
+  either *release to traveller* (pay the milestone, resume the journey) or *refund sender*
+  (return what is still in escrow, optionally with the service fee, end the booking, and count
+  an upheld dispute against the traveller). The resolution note is shown to both parties.
+- **Users**: search, change trust tier, suspend or lift a suspension. Suspended users are
+  signed out and their trips disappear from matching.
+- **Audit log**: every admin action with who, when and why. Reasons are required.
 
 ## Stripe setup
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { senderCancellationRefund, travellerCancellationRefund } from "./cancellation";
 import { corridorFor } from "./locations";
 import { ineligibilityReasons, rankMatches, type MatchableTrip } from "./matching";
-import { milestonePayouts } from "./milestones";
+import { milestonePayouts, unreleasedPayout } from "./milestones";
 import { quote, serviceFeeFor } from "./pricing";
 import { earnedTier } from "./trust";
 import { claimWindowEndsAt, claimWindowHours } from "./urgency";
@@ -59,6 +59,16 @@ describe("milestone payouts", () => {
       expect(parts.PICKED_UP + parts.ARRIVED + parts.DELIVERED).toBe(payout);
     }
     expect(milestonePayouts(4000)).toEqual({ PICKED_UP: 1000, ARRIVED: 1000, DELIVERED: 2000 });
+  });
+
+  it("counts everything not yet confirmed as still in escrow", () => {
+    expect(
+      unreleasedPayout([
+        { status: "CONFIRMED", payout: 1000 },
+        { status: "DISPUTED", payout: 1000 },
+        { status: "PENDING", payout: 2000 },
+      ]),
+    ).toBe(3000);
   });
 });
 

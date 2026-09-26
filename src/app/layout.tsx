@@ -36,6 +36,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <Link href="/dashboard" className="hover:text-brand">Dashboard</Link>
                 <Link href="/trips" className="hover:text-brand">Trips</Link>
                 <Link href="/account" className="hover:text-brand">Account</Link>
+                {user.role === "ADMIN" && (
+                  <Link href="/admin" className="hover:text-brand">Admin</Link>
+                )}
               </>
             )}
             <div className="ml-auto flex items-center gap-3">

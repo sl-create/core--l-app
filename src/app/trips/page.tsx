@@ -12,7 +12,13 @@ export default async function TripsPage({ searchParams }: PageProps<"/trips">) {
   const destination = isLocation(sp.destination) ? sp.destination : undefined;
 
   const trips = await db.trip.findMany({
-    where: { status: "OPEN", departureAt: { gt: new Date() }, origin, destination },
+    where: {
+      status: "OPEN",
+      departureAt: { gt: new Date() },
+      origin,
+      destination,
+      traveller: { suspendedAt: null },
+    },
     include: { traveller: true },
     orderBy: { departureAt: "asc" },
     take: 50,

@@ -29,6 +29,7 @@ async function findMatches(request: NonNullable<Awaited<ReturnType<typeof loadRe
       departureAt: { gt: new Date() },
       arrivalAt: { lte: request.deadline },
       travellerId: { not: request.senderId },
+      traveller: { suspendedAt: null },
     },
     include: { traveller: true },
     take: 50,

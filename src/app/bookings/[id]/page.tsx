@@ -39,13 +39,15 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
       request: { include: { sender: true } },
       trip: { include: { traveller: true } },
       milestones: { orderBy: { sequence: "asc" } },
+      disputes: { orderBy: { createdAt: "asc" } },
     },
   });
   if (!booking) notFound();
   const { request, trip } = booking;
   const isSender = request.senderId === user.id;
   const isTraveller = trip.travellerId === user.id;
-  if (!isSender && !isTraveller) notFound();
+  // Admins can look at any booking but cannot act on it from here.
+  if (!isSender && !isTraveller && user.role !== "ADMIN") notFound();
 
   const money = (amount: number) => <Money amount={amount} currency={booking.currency} />;
   const pickedUp = booking.milestones.some((m) => m.type === "PICKED_UP" && m.status !== "PENDING");
@@ -218,11 +220,22 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               </li>
             ))}
           </ol>
-          {booking.status === "DISPUTED" && (
-            <p className="mt-3 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
-              This booking is under review. Funds stay in escrow until the Ajo team resolves the dispute.
-            </p>
-          )}
+          {booking.disputes.map((d) => (
+            <div
+              key={d.id}
+              className={`mt-3 rounded-xl border px-4 py-3 text-sm ${d.status === "OPEN" ? "border-danger/30 bg-danger-soft text-danger" : "border-border bg-surface"}`}
+            >
+              <p className="font-medium">
+                {d.status === "OPEN"
+                  ? "Under review. Funds stay in escrow until the Ajo team resolves this dispute."
+                  : d.outcome === "RELEASED_TO_TRAVELLER"
+                    ? "Dispute resolved: the milestone was confirmed and paid to the traveller."
+                    : <>Dispute resolved: {money(d.refundAmount ?? 0)} refunded to the sender.</>}
+              </p>
+              <p className="mt-1">Complaint: {d.reason}</p>
+              {d.resolutionNote && <p className="mt-1">Ajo team: {d.resolutionNote}</p>}
+            </div>
+          ))}
         </section>
       )}
 

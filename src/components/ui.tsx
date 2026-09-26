@@ -80,8 +80,8 @@ const STATUS_TONES: Record<string, keyof typeof TONES> = {
   CONFIRMED: "green",
 };
 
-export function StatusBadge({ status }: { status: string }) {
-  const tone = TONES[STATUS_TONES[status] ?? "gray"];
+export function StatusBadge({ status, tone: override }: { status: string; tone?: keyof typeof TONES }) {
+  const tone = TONES[override ?? STATUS_TONES[status] ?? "gray"];
   return (
     <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${tone}`}>
       {status.charAt(0) + status.slice(1).toLowerCase()}

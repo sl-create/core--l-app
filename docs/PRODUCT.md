@@ -78,9 +78,19 @@ A dispute freezes the booking for manual review.
 - **Ajo Verified**: ID Verified + 3 completed deliveries with no upheld disputes (automatic).
   Senders can require it, and it is required for "Other" document types.
 
+### Disputes and trust & safety
+- A sender can dispute a claimed milestone. That freezes the booking: no auto-release,
+  no further payouts.
+- An admin resolves it by **releasing** (the milestone is paid and the journey continues) or
+  **refunding** (unreleased escrow goes back to the sender, the service fee optionally too,
+  and the booking ends). A refund counts as an upheld dispute against the traveller, which
+  blocks automatic Ajo Verified promotion.
+- Admins can change trust tiers and suspend accounts. Every admin action is written to an
+  audit log with a required reason.
+
 ## Not built yet
 - Real authentication (email magic links); sign-in is a development stand-in
-- Admin tools for resolving disputes and managing trust tiers
+- Split refunds (a partial release to the traveller) in dispute resolution
 - Messaging between sender and traveller, and photo proof for milestones
 - Notifications (email/SMS/WhatsApp)
 - Timezone-aware times (everything is shown in UTC)

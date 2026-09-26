@@ -48,7 +48,7 @@ export async function proposeBooking(senderId: string, requestId: string, tripId
     assert(active === 0, "This request already has an active booking");
 
     const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { traveller: true } });
-    assert(trip && trip.status === "OPEN", "Trip not available");
+    assert(trip && trip.status === "OPEN" && !trip.traveller.suspendedAt, "Trip not available");
     assert(trip.travellerId !== senderId, "You cannot book your own trip");
 
     const reasons = ineligibilityReasons(request, {
@@ -187,20 +187,28 @@ export async function confirmMilestone(senderId: string, milestoneId: string) {
   await releaseMilestone(milestoneId);
 }
 
-export async function disputeMilestone(senderId: string, milestoneId: string, note: string) {
+export async function disputeMilestone(senderId: string, milestoneId: string, reason: string) {
   const milestone = await db.milestone.findUnique({
     where: { id: milestoneId },
     include: { booking: { include: { request: true } } },
   });
   assert(milestone && milestone.booking.request.senderId === senderId, "Milestone not found");
-  assert(note.trim().length > 0, "Tell us what went wrong");
-  await db.$transaction(async (tx) => {
+  assert(reason.trim().length > 0, "Tell us what went wrong");
+  return db.$transaction(async (tx) => {
     const { count } = await tx.milestone.updateMany({
       where: { id: milestoneId, status: "CLAIMED" },
-      data: { status: "DISPUTED", note: note.trim() },
+      data: { status: "DISPUTED" },
     });
     assert(count === 1, "This milestone is not waiting for confirmation");
     await tx.booking.update({ where: { id: milestone.bookingId }, data: { status: "DISPUTED" } });
+    return tx.dispute.create({
+      data: {
+        bookingId: milestone.bookingId,
+        milestoneId,
+        openedById: senderId,
+        reason: reason.trim(),
+      },
+    });
   });
 }
 
@@ -219,7 +227,7 @@ async function releaseMilestone(milestoneId: string) {
   await completeIfDone(milestoneId);
 }
 
-async function payOut(milestoneId: string) {
+export async function payOut(milestoneId: string) {
   const milestone = await db.milestone.findUniqueOrThrow({
     where: { id: milestoneId },
     include: { booking: { include: { trip: { include: { traveller: true } } } } },
@@ -237,7 +245,7 @@ async function payOut(milestoneId: string) {
   }
 }
 
-async function completeIfDone(milestoneId: string) {
+export async function completeIfDone(milestoneId: string) {
   const { bookingId } = await db.milestone.findUniqueOrThrow({ where: { id: milestoneId } });
   await db.$transaction(async (tx) => {
     const remaining = await tx.milestone.count({

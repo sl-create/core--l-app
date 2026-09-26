@@ -31,3 +31,8 @@ export function milestonePayouts(travellerPayout: number): Record<MilestoneType,
   });
   return result;
 }
+
+/** Traveller money not yet released, meaning every milestone that is not confirmed. */
+export function unreleasedPayout(milestones: { status: string; payout: number }[]): number {
+  return milestones.filter((m) => m.status !== "CONFIRMED").reduce((sum, m) => sum + m.payout, 0);
+}

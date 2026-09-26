@@ -44,7 +44,10 @@ export async function endSession() {
 export async function currentUser() {
   const token = (await cookies()).get(COOKIE)?.value;
   const userId = token ? verify(token) : null;
-  return userId ? db.user.findUnique({ where: { id: userId } }) : null;
+  if (!userId) return null;
+  const user = await db.user.findUnique({ where: { id: userId } });
+  // A suspended account is treated as signed out everywhere.
+  return user && !user.suspendedAt ? user : null;
 }
 
 export async function requireUser() {

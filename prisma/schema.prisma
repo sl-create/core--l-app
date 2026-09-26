@@ -65,6 +65,21 @@ enum MilestoneType {
   DELIVERED
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+}
+
+enum DisputeOutcome {
+  RELEASED_TO_TRAVELLER // claim upheld, the milestone is paid and the journey continues
+  REFUNDED_TO_SENDER // escrow still held goes back to the sender, and the booking ends
+}
+
 enum MilestoneStatus {
   PENDING
   CLAIMED // traveller says it happened, claim window running
@@ -81,10 +96,15 @@ model User {
   stripeAccountId     String? // Connect account that receives traveller payouts
   completedDeliveries Int       @default(0)
   upheldDisputes      Int       @default(0)
+  role                Role      @default(USER)
+  suspendedAt         DateTime?
   createdAt           DateTime  @default(now())
 
-  trips    Trip[]
-  requests DeliveryRequest[]
+  trips            Trip[]
+  requests         DeliveryRequest[]
+  disputesOpened   Dispute[]         @relation("DisputeOpenedBy")
+  disputesResolved Dispute[]         @relation("DisputeResolvedBy")
+  auditLogs        AuditLog[]
 }
 
 model Trip {
@@ -155,6 +175,7 @@ model Booking {
   cancelledBy String? // "SENDER" | "TRAVELLER"
 
   milestones Milestone[]
+  disputes   Dispute[]
 
   @@index([tripId])
   @@index([requestId])
@@ -173,7 +194,45 @@ model Milestone {
   claimExpiresAt DateTime?
   confirmedAt    DateTime?
   transferId     String?
+  disputes       Dispute[]
 
   @@unique([bookingId, type])
   @@index([status, claimExpiresAt])
+}
+
+model Dispute {
+  id             String          @id @default(cuid())
+  bookingId      String
+  booking        Booking         @relation(fields: [bookingId], references: [id])
+  milestoneId    String
+  milestone      Milestone       @relation(fields: [milestoneId], references: [id])
+  openedById     String
+  openedBy       User            @relation("DisputeOpenedBy", fields: [openedById], references: [id])
+  reason         String
+  status         DisputeStatus   @default(OPEN)
+  outcome        DisputeOutcome?
+  resolutionNote String?
+  refundAmount   Int?
+  resolvedById   String?
+  resolvedBy     User?           @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
+  resolvedAt     DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@index([status, createdAt])
+  @@index([bookingId])
+}
+
+/// Every admin action, kept for accountability. Never updated or deleted.
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  admin      User     @relation(fields: [adminId], references: [id])
+  action     String
+  targetType String
+  targetId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }
