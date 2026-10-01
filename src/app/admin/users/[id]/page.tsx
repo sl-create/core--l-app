@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { setSuspended, setTrustTier } from "../../actions";
+import { setElderApproval, setSuspended, setTrustTier } from "../../actions";
+import { averageRating, levelOf } from "@/lib/domain/levels";
+import { LevelProgress } from "@/components/levels";
 import { TRUST_TIER_LABELS, TRUST_TIERS } from "@/lib/domain/trust";
 import { db } from "@/lib/server/db";
-import { ErrorBanner, Field, formatUtc, PageHeader, StatusBadge, TrustBadge } from "@/components/ui";
+import { ErrorBanner, Field, formatUtc, LevelBadge, PageHeader, StatusBadge, TrustBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 
 export default async function AdminUserPage({ params, searchParams }: PageProps<"/admin/users/[id]">) {
@@ -11,6 +13,8 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
   const { error } = await searchParams;
   const user = await db.user.findUnique({ where: { id } });
   if (!user) notFound();
+  const level = levelOf(user);
+  const avg = averageRating(user);
   const [bookings, log] = await Promise.all([
     db.booking.findMany({
       where: { OR: [{ request: { senderId: id } }, { trip: { travellerId: id } }] },
@@ -31,7 +35,12 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
       <PageHeader
         title={user.name || user.email}
         subtitle={user.email}
-        action={<TrustBadge tier={user.trustTier} />}
+        action={
+          <div className="flex gap-2">
+            <TrustBadge tier={user.trustTier} />
+            {level && <LevelBadge level={level} showMeaning />}
+          </div>
+        }
       />
       <ErrorBanner message={error} />
       {user.suspendedAt && (
@@ -43,10 +52,29 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
         <dl className="grid gap-4 sm:grid-cols-4">
           <Field label="Joined">{formatUtc(user.createdAt)}</Field>
           <Field label="Role">{user.role}</Field>
-          <Field label="Deliveries">{user.completedDeliveries}</Field>
+          <Field label="Deliveries">{user.completedDeliveries} ({user.onTimeDeliveries} on time)</Field>
+          <Field label="Rating">{avg === null ? "–" : `${avg.toFixed(2)}★ from ${user.ratingCount}`}</Field>
           <Field label="Upheld disputes">{user.upheldDisputes}</Field>
+          <Field label="Paid bookings cancelled">{user.travellerCancellations}</Field>
+          <Field label="Àgbà approval">{user.elderApprovedAt ? formatUtc(user.elderApprovedAt) : "No"}</Field>
         </dl>
       </section>
+
+      {level && (
+        <section className="card">
+          <h2 className="mb-3 font-semibold">Level progress</h2>
+          <LevelProgress level={level} stats={{ ...user, elderApproved: user.elderApprovedAt !== null }} />
+          <form action={setElderApproval.bind(null, user.id, !user.elderApprovedAt)} className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
+            <input className="input flex-1" name="reason" required placeholder="Reason (logged)" />
+            <SubmitButton variant={user.elderApprovedAt ? "danger" : "secondary"}>
+              {user.elderApprovedAt ? "Revoke Àgbà approval" : "Approve for Àgbà"}
+            </SubmitButton>
+          </form>
+          <p className="hint">
+            Approval is one of the Àgbà requirements. They still need to meet the others to reach the level.
+          </p>
+        </section>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <form action={setTrustTier.bind(null, user.id)} className="card space-y-3">

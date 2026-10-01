@@ -2,7 +2,8 @@ import Link from "next/link";
 import { LOCATION_LABELS, LOCATIONS, type Location } from "@/lib/domain/locations";
 import { db } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/session";
-import { formatUtc, PageHeader, Route, TrustBadge } from "@/components/ui";
+import { levelOf } from "@/lib/domain/levels";
+import { formatUtc, LevelBadge, PageHeader, Route } from "@/components/ui";
 
 export default async function TripsPage({ searchParams }: PageProps<"/trips">) {
   await requireUser();
@@ -57,7 +58,8 @@ export default async function TripsPage({ searchParams }: PageProps<"/trips">) {
               <Route origin={t.origin} destination={t.destination} />
               <span className="text-sm text-muted">departs {formatUtc(t.departureAt)}</span>
               <span className="ml-auto flex items-center gap-2 text-sm">
-                {t.traveller.name} <TrustBadge tier={t.traveller.trustTier} />
+                <Link href={`/travellers/${t.traveller.id}`} className="hover:underline">{t.traveller.name}</Link>{" "}
+                <LevelBadge level={levelOf(t.traveller)} />
               </span>
             </li>
           ))}

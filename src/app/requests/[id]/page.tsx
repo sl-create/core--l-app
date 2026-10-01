@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cancelRequest, proposeBooking } from "../../actions";
+import { acceptBooking, cancelRequest, declineBooking, proposeBooking } from "../../actions";
 import { CANCELLATION_POLICY_DESCRIPTIONS } from "@/lib/domain/cancellation";
 import { DOCUMENT_LABELS } from "@/lib/domain/documents";
+import { averageRating, LEVEL_INFO, levelOf } from "@/lib/domain/levels";
 import { rankMatches } from "@/lib/domain/matching";
 import { quote } from "@/lib/domain/pricing";
 import { SEAT_HOLDING } from "@/lib/server/bookings";
@@ -12,15 +13,35 @@ import {
   ErrorBanner,
   Field,
   formatUtc,
+  LevelBadge,
   Money,
   PageHeader,
   Route,
   StatusBadge,
-  TrustBadge,
+  Stars,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 
-async function findMatches(request: NonNullable<Awaited<ReturnType<typeof loadRequest>>>) {
+type Traveller = Parameters<typeof levelOf>[0] & {
+  id: string;
+  name: string;
+  completedDeliveries: number;
+};
+
+function TravellerSummary({ traveller }: { traveller: Traveller }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Link href={`/travellers/${traveller.id}`} className="font-semibold hover:underline">
+        {traveller.name}
+      </Link>
+      <LevelBadge level={levelOf(traveller)} />
+      <Stars value={averageRating(traveller)} count={traveller.ratingCount} />
+      <span className="text-xs text-muted">{traveller.completedDeliveries} deliveries</span>
+    </div>
+  );
+}
+
+async function findMatches(request: NonNullable<Awaited<ReturnType<typeof loadRequest>>>, exclude: string[]) {
   const trips = await db.trip.findMany({
     where: {
       status: "OPEN",
@@ -30,6 +51,7 @@ async function findMatches(request: NonNullable<Awaited<ReturnType<typeof loadRe
       arrivalAt: { lte: request.deadline },
       travellerId: { not: request.senderId },
       traveller: { suspendedAt: null },
+      id: { notIn: exclude },
     },
     include: { traveller: true },
     take: 50,
@@ -45,7 +67,7 @@ async function findMatches(request: NonNullable<Awaited<ReturnType<typeof loadRe
     trips.map((t) => ({
       ...t,
       capacityRemaining: t.capacity - (takenByTrip.get(t.id) ?? 0),
-      travellerTier: t.traveller.trustTier,
+      travellerLevel: levelOf(t.traveller),
     })),
   );
 }
@@ -66,11 +88,12 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
   const request = await loadRequest(id);
   if (!request || request.senderId !== user.id) notFound();
 
-  const hasActiveBooking = request.bookings.some((b) =>
-    ["PROPOSED", "ACCEPTED", "FUNDED", "DISPUTED"].includes(b.status),
-  );
-  const canBook = request.status === "OPEN" && !hasActiveBooking;
-  const matches = canBook ? await findMatches(request) : [];
+  const offers = request.bookings.filter((b) => b.status === "PROPOSED" && b.proposedBy === "TRAVELLER");
+  const others = request.bookings.filter((b) => !offers.includes(b));
+  const booked = request.bookings.some((b) => ["ACCEPTED", "FUNDED", "DISPUTED", "COMPLETED"].includes(b.status));
+  const pendingAsk = request.bookings.find((b) => b.status === "PROPOSED" && b.proposedBy === "SENDER");
+  const canPropose = request.status === "OPEN" && !booked && !pendingAsk;
+  const matches = canPropose ? await findMatches(request, offers.map((o) => o.tripId)) : [];
   const q = quote(request);
 
   return (
@@ -88,7 +111,13 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
           <Field label="Deadline">{formatUtc(request.deadline)}</Field>
           <Field label="Pickup area">{request.pickupCity}</Field>
           <Field label="Recipient">{request.recipientName} · {request.recipientPhone}</Field>
-          <Field label="Minimum traveller tier"><TrustBadge tier={request.minTrustTier} /></Field>
+          <Field label="Who can carry it">
+            {request.minLevel === "ARINRIN_AJO" ? (
+              "Any verified traveller"
+            ) : (
+              <><LevelBadge level={request.minLevel} /> <span className="text-sm text-muted">and above</span></>
+            )}
+          </Field>
           {request.description && <Field label="Details">{request.description}</Field>}
         </dl>
         {request.status === "OPEN" && (
@@ -98,11 +127,38 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
         )}
       </section>
 
-      {request.bookings.length > 0 && (
+      {offers.length > 0 && request.status === "OPEN" && !booked && (
+        <section>
+          <h2 className="mb-1 text-lg font-semibold">
+            Travellers offering to carry this <span className="text-muted">({offers.length})</span>
+          </h2>
+          <p className="mb-3 text-sm text-muted">Accept one and the others are closed automatically.</p>
+          <ul className="space-y-3">
+            {offers.map((b) => (
+              <li key={b.id} className="card flex flex-wrap items-center gap-4 border-brand/40">
+                <div className="min-w-0 flex-1">
+                  <TravellerSummary traveller={b.trip.traveller} />
+                  <p className="mt-1 text-sm text-muted">
+                    Departs {formatUtc(b.trip.departureAt)} · lands {formatUtc(b.trip.arrivalAt)}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    <Money amount={b.total} currency={b.currency} /> total ·{" "}
+                    <Link href={`/bookings/${b.id}`} className="link">Message {b.trip.traveller.name.split(" ")[0]}</Link>
+                  </p>
+                </div>
+                <form action={acceptBooking.bind(null, b.id)}><SubmitButton>Accept offer</SubmitButton></form>
+                <form action={declineBooking.bind(null, b.id)}><SubmitButton variant="secondary">Decline</SubmitButton></form>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {others.length > 0 && (
         <section>
           <h2 className="mb-3 text-lg font-semibold">Bookings</h2>
           <ul className="divide-y divide-border rounded-2xl border border-border bg-surface">
-            {request.bookings.map((b) => (
+            {others.map((b) => (
               <li key={b.id}>
                 <Link href={`/bookings/${b.id}`} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-background">
                   <span className="font-medium">{b.trip.traveller.name}</span>
@@ -116,7 +172,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
         </section>
       )}
 
-      {canBook && (
+      {canPropose && (
         <section>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-lg font-semibold">Matching trips</h2>
@@ -127,20 +183,14 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
           </div>
           {matches.length === 0 ? (
             <p className="card text-muted">
-              No trips match yet. We&apos;ll show new trips here as travellers post them.
+              No trips match yet. Travellers on this route can also see your request and offer to carry it.
             </p>
           ) : (
             <ul className="space-y-3">
               {matches.map((t) => (
                 <li key={t.id} className="card flex flex-wrap items-center gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold">{t.traveller.name}</span>
-                      <TrustBadge tier={t.traveller.trustTier} />
-                      <span className="text-xs text-muted">
-                        {t.traveller.completedDeliveries} deliveries
-                      </span>
-                    </div>
+                    <TravellerSummary traveller={t.traveller} />
                     <p className="mt-1 text-sm text-muted">
                       Departs {formatUtc(t.departureAt)} · lands {formatUtc(t.arrivalAt)}
                     </p>
@@ -156,6 +206,10 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
               ))}
             </ul>
           )}
+          <p className="hint mt-3">
+            Travellers are ordered by level, then by earliest arrival.{" "}
+            {request.minLevel !== "ARINRIN_AJO" && `Only ${LEVEL_INFO[request.minLevel].name} and above are shown.`}
+          </p>
         </section>
       )}
     </div>

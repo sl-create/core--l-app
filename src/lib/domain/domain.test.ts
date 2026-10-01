@@ -4,7 +4,7 @@ import { corridorFor } from "./locations";
 import { ineligibilityReasons, rankMatches, type MatchableTrip } from "./matching";
 import { milestonePayouts, unreleasedPayout } from "./milestones";
 import { quote, serviceFeeFor } from "./pricing";
-import { earnedTier } from "./trust";
+import { levelBonus, levelChecks, levelFor, visibleFrom, type TravellerStats } from "./levels";
 import { claimWindowEndsAt, claimWindowHours } from "./urgency";
 
 const now = new Date("2026-10-01T12:00:00Z");
@@ -112,7 +112,7 @@ describe("matching", () => {
     destination: "LONDON" as const,
     availableFrom: now,
     deadline: days(10),
-    minTrustTier: "UNVERIFIED" as const,
+    minLevel: "ARINRIN_AJO" as const,
   };
   const trip: MatchableTrip = {
     origin: "LAGOS",
@@ -120,7 +120,7 @@ describe("matching", () => {
     departureAt: days(3),
     arrivalAt: days(3.5),
     capacityRemaining: 2,
-    travellerTier: "ID_VERIFIED",
+    travellerLevel: "ARINRIN_AJO",
   };
 
   it("matches on route and dates", () => {
@@ -139,26 +139,87 @@ describe("matching", () => {
       ineligibilityReasons({ ...request, availableFrom: days(3) }, trip, now),
     ).toContain("DEPARTS_BEFORE_DOCUMENT_READY");
     expect(ineligibilityReasons(request, { ...trip, capacityRemaining: 0 }, now)).toContain("FULL");
-    expect(ineligibilityReasons(request, { ...trip, travellerTier: "UNVERIFIED" }, now)).toContain(
-      "TRUST_TIER",
+    expect(ineligibilityReasons(request, { ...trip, travellerLevel: null }, now)).toContain(
+      "NOT_VERIFIED",
     );
+    expect(ineligibilityReasons({ ...request, minLevel: "ATONA" }, trip, now)).toContain("LEVEL");
     expect(
-      ineligibilityReasons({ ...request, minTrustTier: "AJO_VERIFIED" }, trip, now),
-    ).toContain("TRUST_TIER");
+      ineligibilityReasons({ ...request, minLevel: "ATONA" }, { ...trip, travellerLevel: "AGBA" }, now),
+    ).toEqual([]);
   });
 
-  it("ranks by trust tier, then earliest arrival", () => {
+  it("ranks by level, then earliest arrival", () => {
     const a = { ...trip, arrivalAt: days(4) };
     const b = { ...trip, arrivalAt: days(3.5) };
-    const c = { ...trip, arrivalAt: days(5), travellerTier: "AJO_VERIFIED" as const };
+    const c = { ...trip, arrivalAt: days(5), travellerLevel: "OLOOOTO" as const };
     expect(rankMatches(request, [a, b, c], now)).toEqual([c, b, a]);
   });
 });
 
-describe("trust tiers", () => {
-  it("promotes to Ajo Verified after 3 clean deliveries", () => {
-    expect(earnedTier("ID_VERIFIED", { completedDeliveries: 3, upheldDisputes: 0 })).toBe("AJO_VERIFIED");
-    expect(earnedTier("ID_VERIFIED", { completedDeliveries: 3, upheldDisputes: 1 })).toBe("ID_VERIFIED");
-    expect(earnedTier("UNVERIFIED", { completedDeliveries: 5, upheldDisputes: 0 })).toBe("UNVERIFIED");
+describe("traveller levels", () => {
+  const base: TravellerStats = {
+    trustTier: "ID_VERIFIED",
+    completedDeliveries: 0,
+    onTimeDeliveries: 0,
+    ratingCount: 0,
+    ratingSum: 0,
+    upheldDisputes: 0,
+    travellerCancellations: 0,
+    elderApproved: false,
+  };
+  const rated = (n: number, avg: number) => ({ ratingCount: n, ratingSum: n * avg });
+
+  it("has no level until verified", () => {
+    expect(levelFor({ ...base, trustTier: "UNVERIFIED", completedDeliveries: 50 })).toBeNull();
+    expect(levelFor(base)).toBe("ARINRIN_AJO");
+  });
+
+  it("reaches Olóòótọ́ after 3 deliveries", () => {
+    expect(levelFor({ ...base, completedDeliveries: 2 })).toBe("ARINRIN_AJO");
+    expect(levelFor({ ...base, completedDeliveries: 3 })).toBe("OLOOOTO");
+  });
+
+  it("ignores ratings until there are enough of them", () => {
+    expect(levelFor({ ...base, completedDeliveries: 3, ...rated(2, 3) })).toBe("OLOOOTO");
+    expect(levelFor({ ...base, completedDeliveries: 3, ...rated(3, 3) })).toBe("ARINRIN_AJO");
+  });
+
+  it("needs on-time deliveries and a clean record for Atọ́nà", () => {
+    const good = { ...base, completedDeliveries: 10, onTimeDeliveries: 10, ...rated(8, 4.9) };
+    expect(levelFor(good)).toBe("ATONA");
+    expect(levelFor({ ...good, onTimeDeliveries: 9 })).toBe("OLOOOTO"); // 90% < 95%
+    expect(levelFor({ ...good, travellerCancellations: 1 })).toBe("OLOOOTO"); // 1/11 strikes > 5%
+  });
+
+  it("goes down as well as up", () => {
+    const good = { ...base, completedDeliveries: 4, ...rated(4, 5) };
+    expect(levelFor(good)).toBe("OLOOOTO");
+    expect(levelFor({ ...good, upheldDisputes: 1 })).toBe("ARINRIN_AJO"); // 25% strikes
+  });
+
+  it("requires admin approval for Àgbà", () => {
+    const elder = { ...base, completedDeliveries: 30, onTimeDeliveries: 30, ...rated(25, 4.9) };
+    expect(levelFor(elder)).toBe("ATONA");
+    expect(levelFor({ ...elder, elderApproved: true })).toBe("AGBA");
+  });
+
+  it("reports progress towards each requirement", () => {
+    const checks = levelChecks("ATONA", { ...base, completedDeliveries: 5, onTimeDeliveries: 5 });
+    expect(checks.find((c) => c.label === "Completed deliveries")).toMatchObject({
+      met: false,
+      progress: 0.5,
+    });
+    expect(checks.find((c) => c.label === "On time")?.met).toBe(true);
+  });
+
+  it("pays a share of the service fee as a bonus", () => {
+    expect(levelBonus("ARINRIN_AJO", 600)).toBe(0);
+    expect(levelBonus("OLOOOTO", 600)).toBe(120);
+    expect(levelBonus("AGBA", 600)).toBe(300);
+  });
+
+  it("shows new requests to higher levels first", () => {
+    expect(visibleFrom(now, "AGBA")).toEqual(now);
+    expect(visibleFrom(now, "ARINRIN_AJO")).toEqual(hours(24));
   });
 });

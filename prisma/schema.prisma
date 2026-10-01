@@ -18,7 +18,18 @@ enum Location {
 enum TrustTier {
   UNVERIFIED
   ID_VERIFIED
-  AJO_VERIFIED
+}
+
+enum TravellerLevel {
+  ARINRIN_AJO // Arìnrìn-àjò, Traveller
+  OLOOOTO // Olóòótọ́, The Faithful One
+  ATONA // Atọ́nà, Guide
+  AGBA // Àgbà, Elder
+}
+
+enum Proposer {
+  SENDER // sender asked a traveller
+  TRAVELLER // traveller offered from their request feed
 }
 
 enum DocumentType {
@@ -94,17 +105,23 @@ enum MilestoneStatus {
 }
 
 model User {
-  id                  String    @id @default(cuid())
-  email               String    @unique
-  name                String
-  trustTier           TrustTier @default(UNVERIFIED)
-  kycSessionId        String?
-  stripeAccountId     String? // Connect account that receives traveller payouts
-  completedDeliveries Int       @default(0)
-  upheldDisputes      Int       @default(0)
-  role                Role      @default(USER)
-  suspendedAt         DateTime?
-  createdAt           DateTime  @default(now())
+  id                     String    @id @default(cuid())
+  email                  String    @unique
+  name                   String
+  trustTier              TrustTier @default(UNVERIFIED)
+  kycSessionId           String?
+  stripeAccountId        String? // Connect account that receives traveller payouts
+  // Traveller track record, from which the level is computed (src/lib/domain/levels.ts)
+  completedDeliveries    Int       @default(0)
+  onTimeDeliveries       Int       @default(0)
+  ratingCount            Int       @default(0)
+  ratingSum              Int       @default(0)
+  upheldDisputes         Int       @default(0)
+  travellerCancellations Int       @default(0)
+  elderApprovedAt        DateTime?
+  role                   Role      @default(USER)
+  suspendedAt            DateTime?
+  createdAt              DateTime  @default(now())
 
   trips            Trip[]
   requests         DeliveryRequest[]
@@ -114,6 +131,8 @@ model User {
   messages         Message[]
   messageReads     MessageRead[]
   sessions         Session[]
+  ratingsGiven     Rating[]          @relation("RatingRater")
+  ratingsReceived  Rating[]          @relation("RatingTraveller")
 }
 
 model Trip {
@@ -136,21 +155,21 @@ model Trip {
 }
 
 model DeliveryRequest {
-  id             String        @id @default(cuid())
+  id             String         @id @default(cuid())
   senderId       String
-  sender         User          @relation(fields: [senderId], references: [id])
+  sender         User           @relation(fields: [senderId], references: [id])
   documentType   DocumentType
   description    String?
   origin         Location
   destination    Location
   availableFrom  DateTime
   deadline       DateTime
-  minTrustTier   TrustTier     @default(ID_VERIFIED)
+  minLevel       TravellerLevel @default(ARINRIN_AJO)
   pickupCity     String
   recipientName  String
   recipientPhone String
-  status         RequestStatus @default(OPEN)
-  createdAt      DateTime      @default(now())
+  status         RequestStatus  @default(OPEN)
+  createdAt      DateTime       @default(now())
 
   bookings Booking[]
 
@@ -158,12 +177,13 @@ model DeliveryRequest {
 }
 
 model Booking {
-  id        String          @id @default(cuid())
-  requestId String
-  request   DeliveryRequest @relation(fields: [requestId], references: [id])
-  tripId    String
-  trip      Trip            @relation(fields: [tripId], references: [id])
-  status    BookingStatus   @default(PROPOSED)
+  id         String          @id @default(cuid())
+  requestId  String
+  request    DeliveryRequest @relation(fields: [requestId], references: [id])
+  tripId     String
+  trip       Trip            @relation(fields: [tripId], references: [id])
+  status     BookingStatus   @default(PROPOSED)
+  proposedBy Proposer        @default(SENDER)
 
   // Price is locked when the sender proposes.
   currency           String
@@ -177,6 +197,11 @@ model Booking {
   transferGroup   String  @unique @default(cuid())
   refundedAmount  Int     @default(0)
 
+  // Level bonus, paid by Ajo from its service fee when the delivery completes
+  travellerLevel  TravellerLevel?
+  levelBonus      Int             @default(0)
+  bonusTransferId String?
+
   proposedAt  DateTime  @default(now())
   acceptedAt  DateTime?
   fundedAt    DateTime?
@@ -187,6 +212,7 @@ model Booking {
   disputes   Dispute[]
   messages   Message[]
   reads      MessageRead[]
+  rating     Rating?
 
   @@index([tripId])
   @@index([requestId])
@@ -294,4 +320,20 @@ model Session {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+/// The sender's rating of the traveller after a completed delivery.
+model Rating {
+  id          String   @id @default(cuid())
+  bookingId   String   @unique
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  raterId     String
+  rater       User     @relation("RatingRater", fields: [raterId], references: [id])
+  travellerId String
+  traveller   User     @relation("RatingTraveller", fields: [travellerId], references: [id])
+  score       Int // 1 to 5
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  @@index([travellerId, createdAt])
 }

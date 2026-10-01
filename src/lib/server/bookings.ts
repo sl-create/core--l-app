@@ -6,7 +6,7 @@ import { formatMoney, LOCATION_LABELS, type Currency } from "@/lib/domain/locati
 import { ineligibilityReasons } from "@/lib/domain/matching";
 import { MILESTONE_LABELS, MILESTONE_TYPES, milestonePayouts } from "@/lib/domain/milestones";
 import { quote } from "@/lib/domain/pricing";
-import { earnedTier } from "@/lib/domain/trust";
+import { levelBonus, levelOf, visibleFrom } from "@/lib/domain/levels";
 import { claimWindowEndsAt } from "@/lib/domain/urgency";
 import { db } from "./db";
 import {
@@ -17,14 +17,14 @@ import {
   transferToTraveller,
 } from "./escrow";
 import { ActionError, assert } from "./errors";
+import { announceLevelChange } from "./levels";
 import { postSystemMessage } from "./messages";
 import { formatUtc } from "@/lib/format";
 
 /** Bookings in these states hold a seat on the trip. */
 export const SEAT_HOLDING: BookingStatus[] = ["ACCEPTED", "FUNDED", "COMPLETED", "DISPUTED"];
-/** A request can have at most one booking in these states. */
-const ACTIVE: BookingStatus[] = ["PROPOSED", "ACCEPTED", "FUNDED", "DISPUTED"];
-
+/** A request can be booked by at most one booking in these states. */
+const BOOKED: BookingStatus[] = ["ACCEPTED", "FUNDED", "DISPUTED", "COMPLETED"];
 export async function seatsTaken(tripId: string, tx: Prisma.TransactionClient = db) {
   return tx.booking.count({ where: { tripId, status: { in: SEAT_HOLDING } } });
 }
@@ -54,38 +54,62 @@ async function loadBooking(bookingId: string) {
   return booking;
 }
 
+type MatchInput = Parameters<typeof ineligibilityReasons>[0];
+type TripWithTraveller = Prisma.TripGetPayload<{ include: { traveller: true } }>;
+
+async function matchProblems(request: MatchInput, trip: TripWithTraveller, tx: Prisma.TransactionClient) {
+  return ineligibilityReasons(request, {
+    ...trip,
+    capacityRemaining: trip.capacity - (await seatsTaken(trip.id, tx)),
+    travellerLevel: levelOf(trip.traveller),
+  });
+}
+
+async function createBooking(
+  tx: Prisma.TransactionClient,
+  requestId: string,
+  tripId: string,
+  proposedBy: "SENDER" | "TRAVELLER",
+) {
+  const request = await tx.deliveryRequest.findUniqueOrThrow({ where: { id: requestId } });
+  const trip = await tx.trip.findUniqueOrThrow({ where: { id: tripId }, include: { traveller: true } });
+  assert(request.status === "OPEN", "This request is no longer open");
+  assert(trip.status === "OPEN" && !trip.traveller.suspendedAt, "Trip not available");
+  assert(trip.travellerId !== request.senderId, "You cannot carry your own document");
+  const booked = await tx.booking.count({ where: { requestId, status: { in: BOOKED } } });
+  assert(booked === 0, "This request has already been booked");
+  const duplicate = await tx.booking.count({ where: { requestId, tripId, status: "PROPOSED" } });
+  assert(duplicate === 0, "There is already a pending booking between this request and trip");
+
+  const reasons = await matchProblems(request, trip, tx);
+  assert(reasons.length === 0, `This trip does not match the request (${reasons.join(", ")})`);
+
+  const q = quote(request);
+  return tx.booking.create({
+    data: {
+      requestId,
+      tripId,
+      proposedBy,
+      currency: q.currency,
+      urgency: q.urgency,
+      travellerPayout: q.travellerPayout,
+      serviceFee: q.serviceFee,
+      total: q.total,
+      cancellationPolicy: trip.cancellationPolicy,
+    },
+  });
+}
+
+/** A sender asks a traveller. A sender can have one request pending at a time. */
 export async function proposeBooking(senderId: string, requestId: string, tripId: string) {
   const booking = await db.$transaction(async (tx) => {
     const request = await tx.deliveryRequest.findUnique({ where: { id: requestId } });
     assert(request && request.senderId === senderId, "Request not found");
-    assert(request.status === "OPEN", "This request is no longer open");
-    const active = await tx.booking.count({ where: { requestId, status: { in: ACTIVE } } });
-    assert(active === 0, "This request already has an active booking");
-
-    const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { traveller: true } });
-    assert(trip && trip.status === "OPEN" && !trip.traveller.suspendedAt, "Trip not available");
-    assert(trip.travellerId !== senderId, "You cannot book your own trip");
-
-    const reasons = ineligibilityReasons(request, {
-      ...trip,
-      capacityRemaining: trip.capacity - (await seatsTaken(tripId, tx)),
-      travellerTier: trip.traveller.trustTier,
+    const pending = await tx.booking.count({
+      where: { requestId, status: "PROPOSED", proposedBy: "SENDER" },
     });
-    assert(reasons.length === 0, `This trip does not match your request (${reasons.join(", ")})`);
-
-    const q = quote(request);
-    return tx.booking.create({
-      data: {
-        requestId,
-        tripId,
-        currency: q.currency,
-        urgency: q.urgency,
-        travellerPayout: q.travellerPayout,
-        serviceFee: q.serviceFee,
-        total: q.total,
-        cancellationPolicy: trip.cancellationPolicy,
-      },
-    });
+    assert(pending === 0, "You already have a pending request to a traveller. Wait for their answer or withdraw it.");
+    return createBooking(tx, requestId, tripId, "SENDER");
   });
   const { sender, traveller, money } = await parties(booking.id);
   await postSystemMessage(
@@ -96,47 +120,115 @@ export async function proposeBooking(senderId: string, requestId: string, tripId
   return booking;
 }
 
-export async function acceptBooking(travellerId: string, bookingId: string) {
+/** A traveller offers to carry a request from their feed. A request can collect several offers. */
+export async function offerToCarry(travellerId: string, tripId: string, requestId: string) {
+  const booking = await db.$transaction(async (tx) => {
+    const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { traveller: true } });
+    assert(trip && trip.travellerId === travellerId, "Trip not found");
+    assert(
+      paymentsSimulated() || trip.traveller.stripeAccountId,
+      "Set up payouts on your account page before offering",
+    );
+    const level = levelOf(trip.traveller);
+    assert(level, "Verify your ID before offering to carry documents");
+    const request = await tx.deliveryRequest.findUnique({ where: { id: requestId } });
+    assert(request, "Request not found");
+    // Higher levels see new requests first. Enforce it here, not just in the feed.
+    assert(visibleFrom(request.createdAt, level) <= new Date(), "This request isn't open to your level yet");
+    return createBooking(tx, requestId, tripId, "TRAVELLER");
+  });
+  const { sender, traveller, money } = await parties(booking.id);
+  await postSystemMessage(
+    booking.id,
+    `${traveller.name} offered to carry this document for ${money(booking.travellerPayout)}.`,
+    { userIds: [sender.id], subject: `${traveller.name} offered to carry your document` },
+  );
+  return booking;
+}
+
+/** Whoever did not propose the booking answers it. */
+function responderIs(
+  booking: { proposedBy: "SENDER" | "TRAVELLER"; request: { senderId: string }; trip: { travellerId: string } },
+  userId: string,
+) {
+  return booking.proposedBy === "SENDER"
+    ? booking.trip.travellerId === userId
+    : booking.request.senderId === userId;
+}
+
+export async function acceptBooking(userId: string, bookingId: string) {
   const booking = await loadBooking(bookingId);
-  assert(booking.trip.travellerId === travellerId, "Booking not found");
+  assert(responderIs(booking, userId), "Booking not found");
   assert(booking.status === "PROPOSED", "This booking can no longer be accepted");
   assert(
     paymentsSimulated() || booking.trip.traveller.stripeAccountId,
-    "Set up payouts on your account page before accepting bookings",
+    booking.proposedBy === "SENDER"
+      ? "Set up payouts on your account page before accepting bookings"
+      : "This traveller can't receive payouts yet. Try another offer.",
   );
-  await db.$transaction(async (tx) => {
-    // Re-check the match, since trust tier or capacity may have changed since the proposal.
-    const reasons = ineligibilityReasons(booking.request, {
-      ...booking.trip,
-      capacityRemaining: booking.trip.capacity - (await seatsTaken(booking.tripId, tx)),
-      travellerTier: booking.trip.traveller.trustTier,
-    });
+  const superseded = await db.$transaction(async (tx) => {
+    // Re-check, since level or capacity may have changed since the proposal.
+    const reasons = await matchProblems(booking.request, booking.trip, tx);
     assert(reasons.length === 0, `This booking no longer matches (${reasons.join(", ")})`);
+    const booked = await tx.booking.count({
+      where: { requestId: booking.requestId, status: { in: BOOKED } },
+    });
+    assert(booked === 0, "This request has already been booked");
     const { count } = await tx.booking.updateMany({
       where: { id: bookingId, status: "PROPOSED" },
       data: { status: "ACCEPTED", acceptedAt: new Date() },
     });
     assert(count === 1, "This booking can no longer be accepted");
+    // Close every other pending request or offer for this document.
+    const others = await tx.booking.findMany({
+      where: { requestId: booking.requestId, status: "PROPOSED", id: { not: bookingId } },
+      select: { id: true, trip: { select: { travellerId: true } } },
+    });
+    await tx.booking.updateMany({
+      where: { id: { in: others.map((o) => o.id) } },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancelledBy: "SYSTEM" },
+    });
+    return others;
   });
+
   const { sender, traveller } = await parties(bookingId);
   await postSystemMessage(
     bookingId,
-    `${traveller.name} accepted. Waiting for ${sender.name} to pay.`,
-    { userIds: [sender.id], subject: `${traveller.name} accepted your booking` },
+    booking.proposedBy === "SENDER"
+      ? `${traveller.name} accepted. Waiting for ${sender.name} to pay.`
+      : `${sender.name} accepted ${traveller.name}'s offer and will pay next.`,
+    booking.proposedBy === "SENDER"
+      ? { userIds: [sender.id], subject: `${traveller.name} accepted your booking` }
+      : { userIds: [traveller.id], subject: `${sender.name} accepted your offer` },
   );
+  for (const other of superseded) {
+    await postSystemMessage(other.id, "This document has been booked with another traveller.", {
+      userIds: [other.trip.travellerId],
+      subject: "A request you were matched with has been booked",
+    });
+  }
 }
 
-export async function declineBooking(travellerId: string, bookingId: string) {
+export async function declineBooking(userId: string, bookingId: string) {
+  const booking = await loadBooking(bookingId);
+  assert(responderIs(booking, userId), "Booking not found");
   const { count } = await db.booking.updateMany({
-    where: { id: bookingId, status: "PROPOSED", trip: { travellerId } },
+    where: { id: bookingId, status: "PROPOSED" },
     data: { status: "DECLINED" },
   });
   assert(count === 1, "This booking can no longer be declined");
   const { sender, traveller } = await parties(bookingId);
-  await postSystemMessage(bookingId, `${traveller.name} declined this request.`, {
-    userIds: [sender.id],
-    subject: `${traveller.name} declined your booking`,
-  });
+  if (booking.proposedBy === "SENDER") {
+    await postSystemMessage(bookingId, `${traveller.name} declined this request.`, {
+      userIds: [sender.id],
+      subject: `${traveller.name} declined your booking`,
+    });
+  } else {
+    await postSystemMessage(bookingId, `${sender.name} declined this offer.`, {
+      userIds: [traveller.id],
+      subject: `${sender.name} declined your offer`,
+    });
+  }
 }
 
 /** Starts payment. Returns a URL to redirect to, or null once a simulated payment is funded. */
@@ -161,18 +253,25 @@ export async function startPayment(senderId: string, bookingId: string): Promise
  */
 export async function markFunded(bookingId: string, paymentIntentId: string): Promise<boolean> {
   const result = await db.$transaction(async (tx) => {
-    const booking = await tx.booking.findUnique({ where: { id: bookingId } });
+    const booking = await tx.booking.findUnique({
+      where: { id: bookingId },
+      include: { trip: { include: { traveller: true } } },
+    });
     if (!booking) return "invalid";
     if (booking.status !== "ACCEPTED") {
       return booking.paymentIntentId === paymentIntentId ? "already" : "invalid";
     }
     const payouts = milestonePayouts(booking.travellerPayout);
+    // The level bonus is locked in when the booking is paid.
+    const level = levelOf(booking.trip.traveller);
     await tx.booking.update({
       where: { id: bookingId },
       data: {
         status: "FUNDED",
         paymentIntentId,
         fundedAt: new Date(),
+        travellerLevel: level,
+        levelBonus: level ? levelBonus(level, booking.serviceFee) : 0,
         milestones: {
           create: MILESTONE_TYPES.map((type, i) => ({ type, sequence: i, payout: payouts[type] })),
         },
@@ -320,33 +419,80 @@ export async function completeIfDone(milestoneId: string) {
     if (count === 0) return false;
     const booking = await tx.booking.findUniqueOrThrow({
       where: { id: bookingId },
-      include: { trip: { include: { traveller: true } } },
+      include: { request: true, milestones: true, trip: { include: { traveller: true } } },
     });
     await tx.deliveryRequest.update({
       where: { id: booking.requestId },
       data: { status: "DELIVERED" },
     });
-    const traveller = booking.trip.traveller;
-    const completedDeliveries = traveller.completedDeliveries + 1;
+    const delivered = booking.milestones.find((m) => m.type === "DELIVERED");
+    const onTime = Boolean(delivered?.claimedAt && delivered.claimedAt <= booking.request.deadline);
+    const levelBefore = levelOf(booking.trip.traveller);
     await tx.user.update({
-      where: { id: traveller.id },
+      where: { id: booking.trip.travellerId },
       data: {
-        completedDeliveries,
-        trustTier: earnedTier(traveller.trustTier, {
-          completedDeliveries,
-          upheldDisputes: traveller.upheldDisputes,
-        }),
+        completedDeliveries: { increment: 1 },
+        onTimeDeliveries: { increment: onTime ? 1 : 0 },
       },
     });
-    return true;
+    return { travellerId: booking.trip.travellerId, levelBefore };
   });
   if (completed) {
-    const { sender, traveller } = await parties(bookingId);
-    await postSystemMessage(bookingId, "Delivery complete. Thank you both for using Ajo!", {
-      userIds: [sender.id, traveller.id],
-      subject: "Delivery complete",
-    });
+    await payLevelBonus(bookingId);
+    const { sender, traveller, money } = await parties(bookingId);
+    const { levelBonus: bonus } = await db.booking.findUniqueOrThrow({ where: { id: bookingId } });
+    await postSystemMessage(
+      bookingId,
+      `Delivery complete${bonus > 0 ? `, and ${traveller.name} earned a ${money(bonus)} level bonus` : ""}. ${sender.name}, please rate your traveller. Thank you both for using Ajo!`,
+      { userIds: [sender.id, traveller.id], subject: "Delivery complete" },
+    );
+    await announceLevelChange(completed.travellerId, completed.levelBefore);
   }
+}
+
+async function payLevelBonus(bookingId: string) {
+  const booking = await db.booking.findUniqueOrThrow({
+    where: { id: bookingId },
+    include: { trip: { include: { traveller: true } } },
+  });
+  if (booking.levelBonus <= 0 || booking.bonusTransferId) return;
+  try {
+    const bonusTransferId = await transferToTraveller({
+      booking,
+      amount: booking.levelBonus,
+      destinationAccountId: booking.trip.traveller.stripeAccountId,
+      idempotencyKey: `bonus-${booking.id}`,
+    });
+    await db.booking.update({ where: { id: bookingId }, data: { bonusTransferId } });
+  } catch (err) {
+    console.error(`Level bonus for booking ${bookingId} failed`, err);
+  }
+}
+
+/** Senders rate the traveller once a delivery is complete. Ratings feed into levels. */
+export async function rateTraveller(senderId: string, bookingId: string, score: number, comment: string) {
+  assert(Number.isInteger(score) && score >= 1 && score <= 5, "Choose 1 to 5 stars");
+  const booking = await loadBooking(bookingId);
+  assert(booking.request.senderId === senderId, "Booking not found");
+  assert(booking.status === "COMPLETED", "You can rate once the delivery is complete");
+  const travellerId = booking.trip.travellerId;
+  const levelBefore = levelOf(booking.trip.traveller);
+  await db.$transaction(async (tx) => {
+    const existing = await tx.rating.count({ where: { bookingId } });
+    assert(existing === 0, "You've already rated this delivery");
+    await tx.rating.create({
+      data: { bookingId, raterId: senderId, travellerId, score, comment: comment.trim() || null },
+    });
+    await tx.user.update({
+      where: { id: travellerId },
+      data: { ratingCount: { increment: 1 }, ratingSum: { increment: score } },
+    });
+  });
+  await postSystemMessage(bookingId, `${booking.request.sender.name} rated this delivery ${"★".repeat(score)}.`, {
+    userIds: [travellerId],
+    subject: `You got a ${score}-star rating`,
+  });
+  await announceLevelChange(travellerId, levelBefore);
 }
 
 /** Auto-confirms claims whose window has lapsed. Run on a schedule. */
@@ -365,7 +511,12 @@ export async function retryFailedTransfers() {
     select: { id: true },
   });
   for (const { id } of pending) await payOut(id);
-  return pending.length;
+  const bonuses = await db.booking.findMany({
+    where: { status: "COMPLETED", levelBonus: { gt: 0 }, bonusTransferId: null },
+    select: { id: true },
+  });
+  for (const { id } of bonuses) await payLevelBonus(id);
+  return pending.length + bonuses.length;
 }
 
 export async function cancelBooking(userId: string, bookingId: string) {
@@ -382,10 +533,12 @@ export async function cancelBooking(userId: string, bookingId: string) {
     });
 
   if (booking.status === "PROPOSED" || booking.status === "ACCEPTED") {
+    // A pending booking cancelled by whoever did not propose it is a decline.
+    const declined = booking.status === "PROPOSED" && responderIs(booking, userId);
     const { count } = await db.booking.updateMany({
       where: { id: bookingId, status: booking.status },
       data: {
-        status: isTraveller && booking.status === "PROPOSED" ? "DECLINED" : "CANCELLED",
+        status: declined ? "DECLINED" : "CANCELLED",
         cancelledAt: new Date(),
         cancelledBy: isSender ? "SENDER" : "TRAVELLER",
       },
@@ -423,6 +576,14 @@ export async function cancelBooking(userId: string, bookingId: string) {
     where: { id: booking.requestId },
     data: { status: isSender ? "CANCELLED" : "OPEN" },
   });
+  const levelBefore = levelOf(booking.trip.traveller);
+  if (isTraveller) {
+    // Cancelling a paid booking counts against the traveller's level.
+    await db.user.update({
+      where: { id: userId },
+      data: { travellerCancellations: { increment: 1 } },
+    });
+  }
 
   await refundSender(booking, refund.total);
   // The traveller keeps whatever part of their fee was not refunded.
@@ -440,6 +601,7 @@ export async function cancelBooking(userId: string, bookingId: string) {
     ` ${money(refund.total)} refunded to ${booking.request.sender.name}` +
       (compensation > 0 ? `, ${money(compensation)} paid to ${booking.trip.traveller.name}.` : "."),
   );
+  if (isTraveller) await announceLevelChange(userId, levelBefore);
   return refund;
 }
 

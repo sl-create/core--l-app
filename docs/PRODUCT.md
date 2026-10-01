@@ -72,11 +72,37 @@ A dispute freezes the booking for manual review.
 - A traveller cancelling always means a full refund for the sender.
 - Once the document is handed over, cancellation is closed. Problems go through a dispute.
 
-### Trust tiers (`trust.ts`)
+### Verification (`trust.ts`)
 - **Unverified**: email only. Can send, cannot carry.
 - **ID Verified**: government ID + selfie through Stripe Identity. Can carry.
-- **Ajo Verified**: ID Verified + 3 completed deliveries with no upheld disputes (automatic).
-  Senders can require it, and it is required for "Other" document types.
+
+### Traveller levels (`levels.ts`)
+Levels reward a track record. Verification decides who *may* carry. The former "Ajo
+Verified" tier is folded into Olóòótọ́ (and the migration converts existing data).
+
+| Level | Meaning | To reach it | Fee-share bonus | Sees new requests |
+| --- | --- | --- | --- | --- |
+| **Arìnrìn-àjò** | Traveller | ID Verified | none | 24h after posting |
+| **Olóòótọ́** | The Faithful One | 3+ deliveries, 4.5★, ≤10% strikes | 20% of Ajo's fee | after 12h |
+| **Atọ́nà** | Guide | 10+ deliveries, 4.7★, 95% on time, ≤5% strikes | 35% | after 4h |
+| **Àgbà** | Elder | 25+ deliveries, 4.8★, 97% on time, ≤3% strikes, admin approval | 50% | immediately |
+
+- **Bigger payouts**: the bonus is a share of Ajo's service fee, so senders pay the same.
+  It is locked in at payment and paid as a separate transfer when the delivery completes.
+- **More matching**: senders see travellers ordered by level, then by earliest arrival.
+- **Exposure to valuable tasks**: each trip has a feed of open requests that fit it. Higher
+  levels see new requests sooner (enforced server-side, not only in the feed). Express and
+  urgent requests (1.5× and 2× pay) are flagged. Senders can reserve a request for a minimum
+  level, and "other" documents need at least Olóòótọ́. Travellers can **offer to carry**. A
+  request can collect several offers, and accepting one closes the rest.
+- **Ratings** (1–5★ with an optional comment) are given by the sender after completion and
+  appear on the traveller's profile. Rating rules apply only from 3 ratings.
+- **On time** means the delivery milestone was claimed before the request deadline.
+- **Strikes** are upheld disputes plus cancellations of paid bookings by the traveller, as a
+  share of all jobs, so a traveller can recover by delivering well.
+- Levels are recomputed from these stats every time, so they go down as well as up.
+  Travellers are emailed when their level changes. Admins approve or revoke Àgbà (audited).
+- Names should be checked by a native Yoruba speaker before launch.
 
 ### Disputes and trust & safety
 - A sender can dispute a claimed milestone. That freezes the booking: no auto-release,
@@ -84,7 +110,7 @@ A dispute freezes the booking for manual review.
 - An admin resolves it by **releasing** (the milestone is paid and the journey continues) or
   **refunding** (unreleased escrow goes back to the sender, the service fee optionally too,
   and the booking ends). A refund counts as an upheld dispute against the traveller, which
-  blocks automatic Ajo Verified promotion.
+  counts as a strike towards their level.
 - Admins can change trust tiers and suspend accounts. Every admin action is written to an
   audit log with a required reason.
 

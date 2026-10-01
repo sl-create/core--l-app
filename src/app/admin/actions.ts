@@ -43,3 +43,10 @@ export async function setSuspended(userId: string, suspended: boolean, form: For
     admin.setSuspended(me, userId, suspended, text(form, "reason")),
   );
 }
+
+export async function setElderApproval(userId: string, approved: boolean, form: FormData) {
+  const me = await admin.requireAdmin();
+  await run(`/admin/users/${userId}`, () =>
+    admin.setElderApproval(me, userId, approved, text(form, "reason")),
+  );
+}

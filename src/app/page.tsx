@@ -55,10 +55,10 @@ export default async function Home() {
 
       <section className="card grid gap-6 sm:grid-cols-3">
         <div>
-          <h3 className="font-semibold">✓ Ajo Verified</h3>
+          <h3 className="font-semibold">Verified, then proven</h3>
           <p className="mt-1 text-sm text-muted">
-            Every traveller passes an ID and selfie check. Ajo Verified travellers also have a
-            record of clean deliveries.
+            Every traveller passes an ID and selfie check, then climbs from Arìnrìn-àjò to Àgbà by
+            delivering on time. <Link href="/levels" className="link">See the levels</Link>
           </p>
         </div>
         <div>

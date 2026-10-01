@@ -1,4 +1,4 @@
-import type { TrustTier } from "./trust";
+import type { Level } from "./levels";
 
 export const DOCUMENT_TYPES = [
   "BIRTH_CERTIFICATE",
@@ -19,12 +19,12 @@ export const DOCUMENT_LABELS: Record<DocumentType, string> = {
   OTHER: "Other document",
 };
 
-/** The default minimum traveller tier for each document type. Senders can require a higher one. */
-export const DOCUMENT_MIN_TIER: Record<DocumentType, TrustTier> = {
-  BIRTH_CERTIFICATE: "ID_VERIFIED",
-  MARRIAGE_CERTIFICATE: "ID_VERIFIED",
-  NIN_SLIP: "ID_VERIFIED",
-  UNIVERSITY_CERTIFICATE: "ID_VERIFIED",
-  TRANSCRIPT: "ID_VERIFIED",
-  OTHER: "AJO_VERIFIED",
+/** The minimum traveller level for each document type. Senders can require a higher one. */
+export const DOCUMENT_MIN_LEVEL: Record<DocumentType, Level> = {
+  BIRTH_CERTIFICATE: "ARINRIN_AJO",
+  MARRIAGE_CERTIFICATE: "ARINRIN_AJO",
+  NIN_SLIP: "ARINRIN_AJO",
+  UNIVERSITY_CERTIFICATE: "ARINRIN_AJO",
+  TRANSCRIPT: "ARINRIN_AJO",
+  OTHER: "OLOOOTO",
 };

@@ -1,5 +1,5 @@
 import type { Location } from "./locations";
-import { MIN_TRAVELLER_TIER, meetsTier, tierRank, type TrustTier } from "./trust";
+import { levelRank, meetsLevel, type Level } from "./levels";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -14,7 +14,7 @@ export type MatchableRequest = {
   /** When the document is ready to hand over. */
   availableFrom: Date;
   deadline: Date;
-  minTrustTier: TrustTier;
+  minLevel: Level;
 };
 
 export type MatchableTrip = {
@@ -23,7 +23,8 @@ export type MatchableTrip = {
   departureAt: Date;
   arrivalAt: Date;
   capacityRemaining: number;
-  travellerTier: TrustTier;
+  /** null when the traveller is not verified and cannot carry documents. */
+  travellerLevel: Level | null;
 };
 
 export type Ineligibility =
@@ -32,7 +33,8 @@ export type Ineligibility =
   | "DEPARTS_BEFORE_DOCUMENT_READY"
   | "ARRIVES_TOO_LATE"
   | "FULL"
-  | "TRUST_TIER";
+  | "NOT_VERIFIED"
+  | "LEVEL";
 
 export function ineligibilityReasons(
   req: MatchableRequest,
@@ -51,10 +53,8 @@ export function ineligibilityReasons(
     reasons.push("ARRIVES_TOO_LATE");
   }
   if (trip.capacityRemaining <= 0) reasons.push("FULL");
-  const required = tierRank(req.minTrustTier) > tierRank(MIN_TRAVELLER_TIER)
-    ? req.minTrustTier
-    : MIN_TRAVELLER_TIER;
-  if (!meetsTier(trip.travellerTier, required)) reasons.push("TRUST_TIER");
+  if (trip.travellerLevel === null) reasons.push("NOT_VERIFIED");
+  else if (!meetsLevel(trip.travellerLevel, req.minLevel)) reasons.push("LEVEL");
   return reasons;
 }
 
@@ -63,7 +63,7 @@ export function isMatch(req: MatchableRequest, trip: MatchableTrip, now?: Date):
 }
 
 /**
- * Orders eligible trips by trust tier first, then by how much slack they leave
+ * Orders eligible trips by traveller level first, then by how much slack they leave
  * before the deadline (earlier arrival is better).
  */
 export function rankMatches<T extends MatchableTrip>(
@@ -75,7 +75,7 @@ export function rankMatches<T extends MatchableTrip>(
     .filter((t) => isMatch(req, t, now))
     .sort(
       (a, b) =>
-        tierRank(b.travellerTier) - tierRank(a.travellerTier) ||
+        levelRank(b.travellerLevel!) - levelRank(a.travellerLevel!) ||
         a.arrivalAt.getTime() - b.arrivalAt.getTime(),
     );
 }

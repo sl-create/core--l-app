@@ -7,7 +7,8 @@ import { refundableAmount, requireAdmin } from "@/lib/server/admin";
 import { listMessages, MAX_MESSAGE_LENGTH } from "@/lib/server/messages";
 import { MessageThread } from "@/components/message-thread";
 import { db } from "@/lib/server/db";
-import { ErrorBanner, Field, formatUtc, Money, PageHeader, Route, StatusBadge, TrustBadge } from "@/components/ui";
+import { levelOf } from "@/lib/domain/levels";
+import { ErrorBanner, Field, formatUtc, LevelBadge, Money, PageHeader, Route, StatusBadge, TrustBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 
 export default async function DisputePage({ params, searchParams }: PageProps<"/admin/disputes/[id]">) {
@@ -40,6 +41,7 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
       <p className="text-sm text-muted">{u.email}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
         <TrustBadge tier={u.trustTier} />
+        {levelOf(u) && <LevelBadge level={levelOf(u)} />}
         <span className="text-muted">{u.completedDeliveries} deliveries · {u.upheldDisputes} upheld disputes</span>
       </div>
     </div>

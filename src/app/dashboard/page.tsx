@@ -7,7 +7,7 @@ import { formatUtc, PageHeader, Route, StatusBadge } from "@/components/ui";
 
 export default async function Dashboard() {
   const user = await requireUser();
-  const [requests, trips, toAccept, toPay, toConfirm, unread] = await Promise.all([
+  const [requests, trips, toAccept, toPay, toConfirm, unread, offers] = await Promise.all([
     db.deliveryRequest.findMany({
       where: { senderId: user.id },
       orderBy: { createdAt: "desc" },
@@ -16,10 +16,12 @@ export default async function Dashboard() {
     db.trip.findMany({
       where: { travellerId: user.id },
       orderBy: { departureAt: "desc" },
-      include: { _count: { select: { bookings: { where: { status: "PROPOSED" } } } } },
+      include: { _count: { select: { bookings: { where: { status: "PROPOSED", proposedBy: "SENDER" } } } } },
       take: 20,
     }),
-    db.booking.count({ where: { status: "PROPOSED", trip: { travellerId: user.id } } }),
+    db.booking.count({
+      where: { status: "PROPOSED", proposedBy: "SENDER", trip: { travellerId: user.id } },
+    }),
     db.booking.findMany({
       where: { status: "ACCEPTED", request: { senderId: user.id } },
       select: { id: true },
@@ -29,9 +31,18 @@ export default async function Dashboard() {
       select: { bookingId: true },
     }),
     unreadCounts(user.id),
+    db.booking.groupBy({
+      by: ["requestId"],
+      where: { status: "PROPOSED", proposedBy: "TRAVELLER", request: { senderId: user.id, status: "OPEN" } },
+      _count: true,
+    }),
   ]);
 
   const actions = [
+    ...offers.map((o) => ({
+      href: `/requests/${o.requestId}`,
+      text: `${o._count} traveller${o._count > 1 ? "s have" : " has"} offered to carry one of your documents.`,
+    })),
     ...[...unread].map(([bookingId, n]) => ({
       href: `/bookings/${bookingId}`,
       text: `${n} unread message${n > 1 ? "s" : ""} on a booking.`,

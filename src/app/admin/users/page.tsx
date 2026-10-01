@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/server/db";
-import { PageHeader, TrustBadge } from "@/components/ui";
+import { levelOf } from "@/lib/domain/levels";
+import { LevelBadge, PageHeader, TrustBadge } from "@/components/ui";
 
 export default async function UsersPage({ searchParams }: PageProps<"/admin/users">) {
   const { q } = await searchParams;
@@ -32,7 +33,10 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
               <span className="text-sm text-muted">{u.email}</span>
               {u.role === "ADMIN" && <span className="text-xs font-semibold uppercase">Admin</span>}
               {u.suspendedAt && <span className="text-xs font-semibold uppercase text-danger">Suspended</span>}
-              <span className="ml-auto"><TrustBadge tier={u.trustTier} /></span>
+              <span className="ml-auto flex gap-2">
+                <TrustBadge tier={u.trustTier} />
+                {levelOf(u) && <LevelBadge level={levelOf(u)} />}
+              </span>
             </Link>
           </li>
         ))}

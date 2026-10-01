@@ -8,6 +8,7 @@ import { db } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/session";
 import { ErrorBanner, Field, formatUtc, Money, PageHeader, Route, StatusBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { RequestFeed } from "@/components/request-feed";
 
 export default async function TripPage({ params, searchParams }: PageProps<"/trips/[id]">) {
   const user = await requireUser();
@@ -50,8 +51,16 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
         )}
       </section>
 
+      {trip.status === "OPEN" && trip.departureAt > new Date() && seatsTaken < trip.capacity && (
+        <section>
+          <h2 className="mb-1 text-lg font-semibold">Requests you could carry</h2>
+          <p className="mb-3 text-sm text-muted">Documents on your route that fit your dates. Offer to carry one and the sender decides.</p>
+          <RequestFeed trip={trip} traveller={user} seatsLeft={trip.capacity - seatsTaken} />
+        </section>
+      )}
+
       <section>
-        <h2 className="mb-3 text-lg font-semibold">Booking requests</h2>
+        <h2 className="mb-3 text-lg font-semibold">Bookings</h2>
         {trip.bookings.length === 0 ? (
           <p className="card text-muted">No booking requests yet. Senders on this route will see your trip.</p>
         ) : (

@@ -64,7 +64,8 @@ src/lib/domain/     Pure business rules, no I/O and fully unit tested
   urgency.ts        Urgency tiers and the 72/48/24/12h claim windows
   cancellation.ts   Flexible / Moderate / Strict refunds
   milestones.ts     Escrow split across milestones
-  trust.ts          Trust tiers and Ajo Verified promotion
+  trust.ts          ID verification (who may carry)
+  levels.ts         Traveller levels, bonuses, early access and progress
 src/lib/server/     Database, session, Stripe and the booking state machine
   bookings.ts       propose → accept → fund → claim/confirm milestones → complete
   escrow.ts         Stripe separate charges & transfers (or simulated)
@@ -89,6 +90,13 @@ and **delivered (50%)**. The traveller claims a milestone. The sender then has a
 window to confirm or dispute it, and when the window lapses the claim confirms
 automatically. Confirming a milestone transfers its share to the traveller.
 
+## Traveller levels
+
+Arìnrìn-àjò → Olóòótọ́ → Atọ́nà → Àgbà, computed from deliveries, ratings, on-time rate and
+strikes (`src/lib/domain/levels.ts`, rules in `docs/PRODUCT.md`). Higher levels get a share of
+Ajo's fee as a bonus, rank higher in matching, and see new requests in their trip feed
+sooner. `/levels` explains it to travellers, and `/travellers/:id` is the public profile.
+
 ## Admin
 
 Admins see an **Admin** link in the header, and everyone else gets a 404 at `/admin`.
@@ -98,7 +106,7 @@ Grant the role with `npm run admin:grant -- you@example.com` after that person h
   either *release to traveller* (pay the milestone, resume the journey) or *refund sender*
   (return what is still in escrow, optionally with the service fee, end the booking, and count
   an upheld dispute against the traveller). The resolution note is shown to both parties.
-- **Users**: search, change trust tier, suspend or lift a suspension. Suspended users are
+- **Users**: search, change verification, approve Àgbà, suspend or lift a suspension. Suspended users are
   signed out and their trips disappear from matching.
 - **Audit log**: every admin action with who, when and why. Reasons are required.
 

@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { CANCELLATION_POLICIES } from "@/lib/domain/cancellation";
-import { DOCUMENT_MIN_TIER, DOCUMENT_TYPES } from "@/lib/domain/documents";
+import { DOCUMENT_MIN_LEVEL, DOCUMENT_TYPES } from "@/lib/domain/documents";
 import { LOCATIONS } from "@/lib/domain/locations";
-import { meetsTier, TRUST_TIERS } from "@/lib/domain/trust";
+import { LEVELS, meetsLevel } from "@/lib/domain/levels";
 import { startIdentityVerification, startPayoutOnboarding } from "@/lib/server/accounts";
 import * as bookings from "@/lib/server/bookings";
 import { db } from "@/lib/server/db";
@@ -98,7 +98,7 @@ const requestSchema = z
     destination: z.enum(LOCATIONS),
     availableFrom: utcDate,
     deadline: utcDate,
-    minTrustTier: z.enum(TRUST_TIERS),
+    minLevel: z.enum(LEVELS),
     pickupCity: z.string().trim().min(1).max(80),
     recipientName: z.string().trim().min(1).max(80),
     recipientPhone: z.string().trim().min(5).max(30),
@@ -117,11 +117,11 @@ export async function createRequest(form: FormData) {
   const user = await requireUser();
   const data = parse(requestSchema, form, "/requests/new");
   // Never allow a lower bar than the document type needs.
-  const minTrustTier = meetsTier(data.minTrustTier, DOCUMENT_MIN_TIER[data.documentType])
-    ? data.minTrustTier
-    : DOCUMENT_MIN_TIER[data.documentType];
+  const minLevel = meetsLevel(data.minLevel, DOCUMENT_MIN_LEVEL[data.documentType])
+    ? data.minLevel
+    : DOCUMENT_MIN_LEVEL[data.documentType];
   const request = await db.deliveryRequest.create({
-    data: { ...data, minTrustTier, description: data.description || null, senderId: user.id },
+    data: { ...data, minLevel, description: data.description || null, senderId: user.id },
   });
   redirect(`/requests/${request.id}`);
 }
@@ -204,6 +204,23 @@ export async function declineBooking(bookingId: string) {
 
 export async function cancelBooking(bookingId: string) {
   await bookingAction(bookingId, bookings.cancelBooking);
+}
+
+export async function offerToCarry(tripId: string, requestId: string) {
+  const user = await requireUser();
+  const booking = await run(`/trips/${tripId}`, () =>
+    bookings.offerToCarry(user.id, tripId, requestId),
+  );
+  redirect(`/bookings/${booking.id}`);
+}
+
+export async function rateTraveller(bookingId: string, form: FormData) {
+  const user = await requireUser();
+  const path = `/bookings/${bookingId}`;
+  const score = Number(form.get("score"));
+  const comment = String(form.get("comment") ?? "").slice(0, 1000);
+  await run(path, () => bookings.rateTraveller(user.id, bookingId, score, comment));
+  revalidatePath(path);
 }
 
 export async function payBooking(bookingId: string) {

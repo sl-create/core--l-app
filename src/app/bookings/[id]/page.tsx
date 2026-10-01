@@ -8,7 +8,9 @@ import {
   declineBooking,
   disputeMilestone,
   payBooking,
+  rateTraveller,
 } from "../../actions";
+import { averageRating, LEVEL_INFO, levelBonus, levelOf } from "@/lib/domain/levels";
 import {
   CANCELLATION_POLICY_DESCRIPTIONS,
   senderCancellationRefund,
@@ -27,7 +29,8 @@ import {
   PageHeader,
   Route,
   StatusBadge,
-  TrustBadge,
+  LevelBadge,
+  Stars,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 
@@ -42,6 +45,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
       trip: { include: { traveller: true } },
       milestones: { orderBy: { sequence: "asc" } },
       disputes: { orderBy: { createdAt: "asc" } },
+      rating: true,
     },
   });
   if (!booking) notFound();
@@ -68,6 +72,14 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
           departureAt: trip.departureAt,
         })
       : null;
+  // Locked in at payment; before that, preview the traveller's current level.
+  const bonusLevel = booking.travellerLevel ?? levelOf(trip.traveller);
+  const bonus = booking.travellerLevel
+    ? booking.levelBonus
+    : bonusLevel
+      ? levelBonus(bonusLevel, booking.serviceFee)
+      : 0;
+  const isResponder = booking.proposedBy === "SENDER" ? isTraveller : isSender;
   const firstPending = booking.milestones.find((m) => m.status === "PENDING");
   const inProgress = ["FUNDED", "COMPLETED", "DISPUTED"].includes(booking.status);
 
@@ -88,11 +100,16 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
           <h2 className="mb-3 font-semibold">{isSender ? "Your traveller" : "Your sender"}</h2>
           {isSender ? (
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{trip.traveller.name}</span>
-                <TrustBadge tier={trip.traveller.trustTier} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href={`/travellers/${trip.traveller.id}`} className="font-medium hover:underline">
+                  {trip.traveller.name}
+                </Link>
+                <LevelBadge level={levelOf(trip.traveller)} />
               </div>
-              <p className="text-sm text-muted">{trip.traveller.completedDeliveries} completed deliveries</p>
+              <p className="flex items-center gap-2 text-sm text-muted">
+                <Stars value={averageRating(trip.traveller)} count={trip.traveller.ratingCount} />·{" "}
+                {trip.traveller.completedDeliveries} completed deliveries
+              </p>
               <p className="text-sm text-muted">
                 Departs {formatUtc(trip.departureAt)}, lands {formatUtc(trip.arrivalAt)}
               </p>
@@ -130,6 +147,17 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                 <div className="flex justify-between border-t border-border pt-1 font-semibold"><dt>Total</dt><dd>{money(booking.total)}</dd></div>
               </>
             )}
+            {isTraveller && bonus > 0 && (
+              <>
+                <div className="flex justify-between text-brand">
+                  <dt>{LEVEL_INFO[bonusLevel!].name} bonus{booking.travellerLevel ? "" : " (if you stay at this level)"}</dt>
+                  <dd>+{money(bonus)}</dd>
+                </div>
+                <div className="flex justify-between border-t border-border pt-1 font-semibold">
+                  <dt>You earn</dt><dd>{money(booking.travellerPayout + bonus)}</dd>
+                </div>
+              </>
+            )}
             {booking.refundedAmount > 0 && (
               <div className="flex justify-between text-muted"><dt>Refunded</dt><dd>{money(booking.refundedAmount)}</dd></div>
             )}
@@ -143,16 +171,24 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
 
       {booking.status === "PROPOSED" && (
         <section className="card flex flex-wrap items-center gap-3">
-          {isTraveller ? (
+          {isResponder ? (
             <>
               <p className="flex-1 text-sm">
-                {request.sender.name} wants you to carry this document. You&apos;ll earn {money(booking.travellerPayout)}.
+                {isTraveller
+                  ? <>{request.sender.name} wants you to carry this document. You&apos;ll earn {money(booking.travellerPayout + bonus)}.</>
+                  : <>{trip.traveller.name} has offered to carry your document for {money(booking.total)} in total.</>}
               </p>
-              <form action={acceptBooking.bind(null, booking.id)}><SubmitButton>Accept</SubmitButton></form>
+              <form action={acceptBooking.bind(null, booking.id)}>
+                <SubmitButton>{isSender ? "Accept offer" : "Accept"}</SubmitButton>
+              </form>
               <form action={declineBooking.bind(null, booking.id)}><SubmitButton variant="secondary">Decline</SubmitButton></form>
             </>
           ) : (
-            <p className="text-sm text-muted">Waiting for {trip.traveller.name} to respond.</p>
+            <p className="text-sm text-muted">
+              {isSender
+                ? `Waiting for ${trip.traveller.name} to respond.`
+                : `Offer sent. Waiting for ${request.sender.name} to decide.`}
+            </p>
           )}
         </section>
       )}
@@ -241,6 +277,36 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               {d.resolutionNote && <p className="mt-1">Ajo team: {d.resolutionNote}</p>}
             </div>
           ))}
+        </section>
+      )}
+
+      {booking.status === "COMPLETED" && (isSender || booking.rating) && (
+        <section className="card">
+          <h2 className="mb-2 font-semibold">{booking.rating ? "Rating" : `How did ${trip.traveller.name} do?`}</h2>
+          {booking.rating ? (
+            <div>
+              <span className="text-lg text-amber-500" aria-label={`${booking.rating.score} stars`}>
+                {"★".repeat(booking.rating.score)}
+                <span className="text-border">{"★".repeat(5 - booking.rating.score)}</span>
+              </span>
+              {booking.rating.comment && <p className="mt-1 text-sm">{booking.rating.comment}</p>}
+            </div>
+          ) : (
+            <form action={rateTraveller.bind(null, booking.id)} className="space-y-3">
+              <fieldset className="flex flex-row-reverse justify-end gap-1 text-3xl">
+                <legend className="sr-only">Stars</legend>
+                {[5, 4, 3, 2, 1].map((n) => (
+                  <label key={n} className="cursor-pointer text-border transition-colors hover:text-amber-500 has-[:checked]:text-amber-500 [&:hover~label]:text-amber-500 [&:has(:checked)~label]:text-amber-500">
+                    <input type="radio" name="score" value={n} required className="sr-only" aria-label={`${n} star${n > 1 ? "s" : ""}`} />
+                    ★
+                  </label>
+                ))}
+              </fieldset>
+              <textarea className="input" name="comment" rows={2} placeholder="Optional: tell other senders about your experience" />
+              <SubmitButton>Submit rating</SubmitButton>
+              <p className="hint">Ratings appear on {trip.traveller.name}&apos;s profile and count towards their level.</p>
+            </form>
+          )}
         </section>
       )}
 

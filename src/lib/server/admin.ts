@@ -6,6 +6,7 @@ import { completeIfDone, payOut } from "./bookings";
 import { db } from "./db";
 import { refundSender } from "./escrow";
 import { assert } from "./errors";
+import { announceLevelChange, currentLevel } from "./levels";
 import { postSystemMessage } from "./messages";
 import { formatMoney, type Currency } from "@/lib/domain/locations";
 import { endAllSessions, requireUser } from "./session";
@@ -82,6 +83,8 @@ export async function refundDispute(
   const { booking } = dispute;
   const amount = refundableAmount(booking, includeServiceFee);
 
+  const levelBefore = await currentLevel(booking.trip.travellerId);
+
   // Refund first. The idempotency key means a retry or a second admin cannot refund twice.
   await refundSender(booking, amount);
 
@@ -125,6 +128,7 @@ export async function refundDispute(
     booking.id,
     `The Ajo team reviewed the dispute and refunded ${formatMoney(amount, booking.currency as Currency)} to the sender. This booking is closed. Note from Ajo: ${note.trim()}`,
   );
+  await announceLevelChange(booking.trip.travellerId, levelBefore);
 }
 
 async function announceResolution(bookingId: string, body: string) {
@@ -165,4 +169,20 @@ export async function setSuspended(admin: User, userId: string, suspended: boole
     });
   });
   if (suspended) await endAllSessions(userId);
+}
+
+/** Àgbà is the one level that needs a person to sign off on it. */
+export async function setElderApproval(admin: User, userId: string, approved: boolean, reason: string) {
+  assert(reason.trim(), "Add a reason");
+  const before = await currentLevel(userId);
+  await db.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { elderApprovedAt: approved ? new Date() : null },
+    });
+    await audit(tx, admin, approved ? "user.elder_approve" : "user.elder_revoke", { type: "User", id: userId }, {
+      reason,
+    });
+  });
+  await announceLevelChange(userId, before);
 }

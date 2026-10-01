@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createTrip } from "../../actions";
 import { CANCELLATION_POLICIES, CANCELLATION_POLICY_DESCRIPTIONS } from "@/lib/domain/cancellation";
 import { LOCATION_LABELS, LOCATIONS } from "@/lib/domain/locations";
-import { meetsTier, MIN_TRAVELLER_TIER } from "@/lib/domain/trust";
+import { canCarry } from "@/lib/domain/trust";
 import { requireUser } from "@/lib/server/session";
 import { ErrorBanner, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -14,7 +14,7 @@ export default async function NewTripPage({ searchParams }: PageProps<"/trips/ne
     <div className="mx-auto max-w-2xl">
       <PageHeader title="Add a trip" subtitle="Earn money carrying documents on a flight you're already taking." />
       <ErrorBanner message={error} />
-      {!meetsTier(user.trustTier, MIN_TRAVELLER_TIER) && (
+      {!canCarry(user.trustTier) && (
         <div className="mb-6 rounded-xl border border-accent/40 bg-amber-50 px-4 py-3 text-sm dark:bg-amber-950/40">
           You can post a trip now, but senders can only book you once you&apos;ve{" "}
           <Link href="/account" className="link">verified your ID</Link>.

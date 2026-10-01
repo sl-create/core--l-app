@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { createRequest } from "../../actions";
 import { DOCUMENT_LABELS, DOCUMENT_TYPES } from "@/lib/domain/documents";
 import { LOCATION_LABELS, LOCATIONS } from "@/lib/domain/locations";
-import { TRUST_TIER_LABELS } from "@/lib/domain/trust";
+import { LEVEL_INFO, LEVELS } from "@/lib/domain/levels";
 import { requireUser } from "@/lib/server/session";
 import { ErrorBanner, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -24,11 +25,18 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/reque
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="minTrustTier">Traveller must be at least</label>
-            <select className="input" id="minTrustTier" name="minTrustTier" defaultValue="ID_VERIFIED">
-              <option value="ID_VERIFIED">{TRUST_TIER_LABELS.ID_VERIFIED}</option>
-              <option value="AJO_VERIFIED">{TRUST_TIER_LABELS.AJO_VERIFIED}</option>
+            <label className="label" htmlFor="minLevel">Who can carry it</label>
+            <select className="input" id="minLevel" name="minLevel" defaultValue="ARINRIN_AJO">
+              <option value="ARINRIN_AJO">Any verified traveller</option>
+              {LEVELS.slice(1).map((l) => (
+                <option key={l} value={l}>
+                  {LEVEL_INFO[l].name} ({LEVEL_INFO[l].meaning}) and above
+                </option>
+              ))}
             </select>
+            <p className="hint">
+              Reserve important documents for experienced travellers. <Link href="/levels" className="link">About levels</Link>
+            </p>
           </div>
         </div>
         <div>
