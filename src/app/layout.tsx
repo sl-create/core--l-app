@@ -24,8 +24,14 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const user = await currentUser();
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col font-sans">
+    // Browser extensions (password managers, Grammarly, etc.) often add attributes to
+    // <html> and <body> before React loads. Ignore those differences on these two tags only.
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <body className="flex min-h-full flex-col font-sans" suppressHydrationWarning>
         <header className="border-b border-border bg-surface/80 backdrop-blur">
           <nav className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 text-sm sm:gap-5">
             <Link href="/" className="text-xl font-bold tracking-tight text-brand">
