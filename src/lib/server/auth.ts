@@ -33,13 +33,16 @@ export async function requestLoginLink(rawEmail: string): Promise<string | null>
       expiresAt: new Date(Date.now() + LINK_TTL_MINUTES * 60 * 1000),
     },
   });
-  const link = `${appUrl()}/auth/verify?token=${token}`;
+  const path = `/auth/verify?token=${token}`;
+  const link = `${appUrl()}${path}`;
   await sendEmail({
     to: email,
     subject: "Your Ajo sign-in link",
     text: `Click to sign in to Ajo:\n\n${link}\n\nThis link works once and expires in ${LINK_TTL_MINUTES} minutes. If you didn't ask for it, you can ignore this email.`,
   });
-  return devMode ? link : null;
+  // Relative, so the on-screen link works whatever host the dev server is reached through
+  // (a phone on the LAN, a tunnel or a preview proxy).
+  return devMode ? path : null;
 }
 
 /** Uses up a sign-in link, creating the account on first sign-in, and starts a session. */
