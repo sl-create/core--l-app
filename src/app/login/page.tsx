@@ -12,7 +12,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   return (
     <div className="mx-auto max-w-sm">
       <h1 className="mb-2 text-2xl font-bold tracking-tight">Sign in to Ajo</h1>
-      <p className="mb-6 text-muted">New or returning, we&apos;ll email you a link. No password needed.</p>
+      <p className="mb-6 text-muted">
+        {demo
+          ? "New or returning, enter your email and the access code. No password needed."
+          : "New or returning, we\u2019ll email you a link. No password needed."}
+      </p>
       <ErrorBanner message={error} />
       <form action={requestLogin} className="card space-y-4">
         <div>
@@ -26,7 +30,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             <p className="mt-1 text-sm text-muted">This is a private test version of Ajo.</p>
           </div>
         )}
-        <SubmitButton>Email me a sign-in link</SubmitButton>
+        <SubmitButton>{demo ? "Get a sign-in link" : "Email me a sign-in link"}</SubmitButton>
       </form>
     </div>
   );

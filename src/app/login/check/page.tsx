@@ -9,10 +9,12 @@ export default async function CheckEmailPage({ searchParams }: PageProps<"/login
   return (
     <div className="mx-auto max-w-sm text-center">
       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-soft text-2xl">✉</div>
-      <h1 className="mb-2 text-2xl font-bold tracking-tight">Check your email</h1>
+      <h1 className="mb-2 text-2xl font-bold tracking-tight">
+        {mode === "demo" && link ? "Your sign-in link" : "Check your email"}
+      </h1>
       <p className="text-muted">
-        We sent a sign-in link to <strong className="text-foreground">{email}</strong>. It works
-        once and expires in 15 minutes.
+        {mode === "demo" && link ? "Here is" : "We sent"} a sign-in link for{" "}
+        <strong className="text-foreground">{email}</strong>. It works once and expires in 15 minutes.
       </p>
       {link && (
         <div className="card mt-6 text-left text-sm">

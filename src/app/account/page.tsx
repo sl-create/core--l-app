@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { setUpPayouts, verifyIdentity } from "../actions";
 import { averageRating, LEVEL_INFO, levelOf } from "@/lib/domain/levels";
-import { TRUST_TIER_DESCRIPTIONS, TRUST_TIER_LABELS, TRUST_TIERS } from "@/lib/domain/trust";
+import { TRUST_TIER_STEPS, TRUST_TIERS } from "@/lib/domain/trust";
 import { paymentsSimulated } from "@/lib/server/escrow";
 import { requireUser } from "@/lib/server/session";
 import { LevelProgress } from "@/components/levels";
@@ -35,8 +35,8 @@ export default async function AccountPage() {
                   {reached ? "✓" : ""}
                 </span>
                 <div>
-                  <p className="font-medium">{TRUST_TIER_LABELS[tier]}</p>
-                  <p className="text-sm text-muted">{TRUST_TIER_DESCRIPTIONS[tier]}</p>
+                  <p className="font-medium">{TRUST_TIER_STEPS[tier].label}</p>
+                  <p className="text-sm text-muted">{TRUST_TIER_STEPS[tier].description}</p>
                 </div>
               </li>
             );
