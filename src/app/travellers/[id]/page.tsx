@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { averageRating, LEVEL_INFO, levelOf } from "@/lib/domain/levels";
 import { db } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/session";
-import { formatUtc, LevelBadge, Route } from "@/components/ui";
+import { formatAt, formatDay, LevelBadge, Route } from "@/components/ui";
 
 export default async function TravellerProfile({ params }: PageProps<"/travellers/[id]">) {
   await requireUser();
@@ -42,7 +42,7 @@ export default async function TravellerProfile({ params }: PageProps<"/traveller
           <div><dt className="text-xs text-muted">Rating</dt><dd className="text-xl font-bold">{avg === null ? "–" : `${avg.toFixed(1)}★`}</dd></div>
           <div><dt className="text-xs text-muted">On time</dt><dd className="text-xl font-bold">{onTime}</dd></div>
         </dl>
-        <p className="mt-4 text-xs text-muted">Member since {formatUtc(traveller.createdAt).split(",").slice(0, 2).join(",")}</p>
+        <p className="mt-4 text-xs text-muted">Member since {formatDay(traveller.createdAt)}</p>
       </section>
 
       {trips.length > 0 && (
@@ -52,7 +52,7 @@ export default async function TravellerProfile({ params }: PageProps<"/traveller
             {trips.map((t) => (
               <li key={t.id} className="flex flex-wrap gap-3 px-5 py-3">
                 <Route origin={t.origin} destination={t.destination} />
-                <span className="text-muted">departs {formatUtc(t.departureAt)}</span>
+                <span className="text-muted">departs {formatAt(t.departureAt, t.origin)}</span>
               </li>
             ))}
           </ul>
@@ -71,7 +71,7 @@ export default async function TravellerProfile({ params }: PageProps<"/traveller
                   <span className="text-amber-500" aria-label={`${r.score} stars`}>
                     {"★".repeat(r.score)}<span className="text-border">{"★".repeat(5 - r.score)}</span>
                   </span>
-                  <span className="text-xs text-muted">{formatUtc(r.createdAt)}</span>
+                  <span className="text-xs text-muted">{formatDay(r.createdAt)}</span>
                 </div>
                 {r.comment && <p className="mt-2 text-sm">{r.comment}</p>}
                 <p className="mt-2 text-xs text-muted">

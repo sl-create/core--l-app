@@ -64,11 +64,11 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/reque
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label" htmlFor="availableFrom">Ready for handover from (UTC)</label>
+            <label className="label" htmlFor="availableFrom">Ready for handover from (local time at pickup)</label>
             <input className="input" id="availableFrom" name="availableFrom" type="datetime-local" required />
           </div>
           <div>
-            <label className="label" htmlFor="deadline">Must arrive by (UTC)</label>
+            <label className="label" htmlFor="deadline">Must arrive by (local time at destination)</label>
             <input className="input" id="deadline" name="deadline" type="datetime-local" required />
             <p className="hint">Closer deadlines cost more and have shorter claim windows.</p>
           </div>

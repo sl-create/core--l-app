@@ -24,7 +24,7 @@ import { MessageThread } from "@/components/message-thread";
 import { requireUser } from "@/lib/server/session";
 import {
   ErrorBanner,
-  formatUtc,
+  formatAt, LocalTime,
   Money,
   PageHeader,
   Route,
@@ -111,7 +111,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                 {trip.traveller.completedDeliveries} completed deliveries
               </p>
               <p className="text-sm text-muted">
-                Departs {formatUtc(trip.departureAt)}, lands {formatUtc(trip.arrivalAt)}
+                Departs {formatAt(trip.departureAt, trip.origin)}, lands {formatAt(trip.arrivalAt, trip.destination)}
               </p>
               {inProgress && <p className="text-sm">Contact: {trip.traveller.email}</p>}
             </div>
@@ -120,7 +120,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               <p className="font-medium">{request.sender.name}</p>
               <p className="text-sm text-muted">Pickup area: {request.pickupCity}</p>
               <p className="text-sm text-muted">
-                Ready from {formatUtc(request.availableFrom)} · deliver by {formatUtc(request.deadline)}
+                Ready from {formatAt(request.availableFrom, request.origin)} · deliver by {formatAt(request.deadline, request.destination)}
               </p>
               {inProgress ? (
                 <>
@@ -227,13 +227,13 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                 {m.note && <p className="mt-2 text-sm text-muted">&ldquo;{m.note}&rdquo;</p>}
                 {m.status === "CLAIMED" && m.claimExpiresAt && (
                   <p className="mt-2 text-sm">
-                    Claimed {formatUtc(m.claimedAt!)}. Confirms automatically at{" "}
-                    <strong>{formatUtc(m.claimExpiresAt)}</strong> unless disputed.
+                    Claimed <LocalTime date={m.claimedAt!} />. Confirms automatically at{" "}
+                    <strong><LocalTime date={m.claimExpiresAt} /></strong> unless disputed.
                   </p>
                 )}
                 {m.status === "CONFIRMED" && m.confirmedAt && (
                   <p className="mt-2 text-sm text-muted">
-                    Confirmed {formatUtc(m.confirmedAt)}{m.transferId ? " · paid out" : " · payout pending"}
+                    Confirmed <LocalTime date={m.confirmedAt} />{m.transferId ? " · paid out" : " · payout pending"}
                   </p>
                 )}
 

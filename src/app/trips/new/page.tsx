@@ -35,11 +35,11 @@ export default async function NewTripPage({ searchParams }: PageProps<"/trips/ne
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="departureAt">Departure (UTC)</label>
+            <label className="label" htmlFor="departureAt">Departure (local time where you leave)</label>
             <input className="input" id="departureAt" name="departureAt" type="datetime-local" required />
           </div>
           <div>
-            <label className="label" htmlFor="arrivalAt">Arrival (UTC)</label>
+            <label className="label" htmlFor="arrivalAt">Arrival (local time where you land)</label>
             <input className="input" id="arrivalAt" name="arrivalAt" type="datetime-local" required />
           </div>
           <div>

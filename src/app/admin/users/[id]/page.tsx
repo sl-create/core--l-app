@@ -5,7 +5,7 @@ import { averageRating, levelOf } from "@/lib/domain/levels";
 import { LevelProgress } from "@/components/levels";
 import { TRUST_TIER_LABELS, TRUST_TIERS } from "@/lib/domain/trust";
 import { db } from "@/lib/server/db";
-import { ErrorBanner, Field, formatUtc, LevelBadge, PageHeader, StatusBadge, TrustBadge } from "@/components/ui";
+import { ErrorBanner, Field, formatDay, LocalTime, LevelBadge, PageHeader, StatusBadge, TrustBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 
 export default async function AdminUserPage({ params, searchParams }: PageProps<"/admin/users/[id]">) {
@@ -45,18 +45,18 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
       <ErrorBanner message={error} />
       {user.suspendedAt && (
         <p className="rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
-          Suspended since {formatUtc(user.suspendedAt)}. They cannot sign in and their trips are hidden.
+          Suspended since <LocalTime date={user.suspendedAt} />. They cannot sign in and their trips are hidden.
         </p>
       )}
       <section className="card">
         <dl className="grid gap-4 sm:grid-cols-4">
-          <Field label="Joined">{formatUtc(user.createdAt)}</Field>
+          <Field label="Joined">{formatDay(user.createdAt)}</Field>
           <Field label="Role">{user.role}</Field>
           <Field label="Deliveries">{user.completedDeliveries} ({user.onTimeDeliveries} on time)</Field>
           <Field label="Rating">{avg === null ? "–" : `${avg.toFixed(2)}★ from ${user.ratingCount}`}</Field>
           <Field label="Upheld disputes">{user.upheldDisputes}</Field>
           <Field label="Paid bookings cancelled">{user.travellerCancellations}</Field>
-          <Field label="Àgbà approval">{user.elderApprovedAt ? formatUtc(user.elderApprovedAt) : "No"}</Field>
+          <Field label="Àgbà approval">{user.elderApprovedAt ? formatDay(user.elderApprovedAt) : "No"}</Field>
         </dl>
       </section>
 
@@ -107,7 +107,7 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
               <li key={b.id}>
                 <Link href={`/bookings/${b.id}`} className="flex flex-wrap items-center gap-3 px-5 py-3 hover:bg-background">
                   <span>{b.request.senderId === id ? "Sender" : "Traveller"}</span>
-                  <span className="text-muted">{formatUtc(b.proposedAt)}</span>
+                  <span className="text-muted"><LocalTime date={b.proposedAt} /></span>
                   <span className="ml-auto"><StatusBadge status={b.status} /></span>
                 </Link>
               </li>
@@ -124,7 +124,7 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
           <ul className="space-y-1 text-sm">
             {log.map((l) => (
               <li key={l.id}>
-                <span className="text-muted">{formatUtc(l.createdAt)}</span> · {l.admin.name}: {l.action}{" "}
+                <span className="text-muted"><LocalTime date={l.createdAt} /></span> · {l.admin.name}: {l.action}{" "}
                 <span className="text-muted">{JSON.stringify(l.details)}</span>
               </li>
             ))}

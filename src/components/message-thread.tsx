@@ -3,18 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { sendMessage } from "@/app/actions";
 import type { MessageDTO } from "@/lib/server/messages";
+import { LocalTime } from "./local-time";
 
 const POLL_MS = 5000;
-
-function time(iso: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "UTC",
-  }).format(new Date(iso));
-}
 
 export function MessageThread({
   bookingId,
@@ -91,7 +82,7 @@ export function MessageThread({
           if (m.kind === "SYSTEM") {
             return (
               <li key={m.id} className="mx-auto max-w-lg text-center text-xs text-muted">
-                {m.body} <span className="whitespace-nowrap">· {time(m.createdAt)}</span>
+                {m.body} <span className="whitespace-nowrap">· <LocalTime date={m.createdAt} short /></span>
               </li>
             );
           }
@@ -115,7 +106,7 @@ export function MessageThread({
                 )}
                 <p className="whitespace-pre-wrap break-words">{m.body}</p>
                 <p className={`mt-1 text-[10px] ${mine ? "text-white/70 dark:text-black/60" : "text-muted"}`}>
-                  {time(m.createdAt)} UTC
+                  <LocalTime date={m.createdAt} short />
                 </p>
               </div>
             </li>

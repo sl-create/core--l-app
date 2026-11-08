@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/server/db";
-import { formatUtc, PageHeader } from "@/components/ui";
+import { LocalTime, PageHeader } from "@/components/ui";
 
 const targetHref = (type: string, id: string) =>
   type === "User" ? `/admin/users/${id}` : type === "Dispute" ? `/admin/disputes/${id}` : null;
@@ -27,7 +27,7 @@ export default async function AuditPage() {
               const href = targetHref(e.targetType, e.targetId);
               return (
                 <tr key={e.id} className="align-top">
-                  <td className="whitespace-nowrap p-3 text-muted">{formatUtc(e.createdAt)}</td>
+                  <td className="whitespace-nowrap p-3 text-muted"><LocalTime date={e.createdAt} /></td>
                   <td className="p-3">{e.admin.name}</td>
                   <td className="p-3">{href ? <Link href={href} className="link">{e.action}</Link> : e.action}</td>
                   <td className="break-all p-3 text-muted">{e.details ? JSON.stringify(e.details) : ""}</td>

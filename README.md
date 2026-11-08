@@ -101,7 +101,8 @@ sooner. `/levels` explains it to travellers, and `/travellers/:id` is the public
 ## Admin
 
 Admins see an **Admin** link in the header, and everyone else gets a 404 at `/admin`.
-Grant the role with `npm run admin:grant -- you@example.com` after that person has signed in once.
+Grant the role by listing the email in `ADMIN_EMAILS` (applied at their next sign-in), or with
+`npm run admin:grant -- you@example.com` after that person has signed in once.
 
 - **Disputes**: see the complaint, the traveller's claim note and the escrow state, then
   either *release to traveller* (pay the milestone, resume the journey) or *refund sender*
@@ -135,11 +136,15 @@ A free, permanent test deploy you can open on any device. Payments stay simulate
    sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
 3. In **Settings → Environment Variables**, add:
    - `DEMO_ACCESS_CODE`: a code you choose. You type it on the sign-in form.
+   - `ADMIN_EMAILS`: your email (comma-separate several). Those accounts become admins
+     when they sign in. Anyone with the access code can sign in as any email, so on a
+     demo deploy keep the code private.
    - `CRON_SECRET`: a long random string. Vercel sends it to the cron route.
 4. Deploy (or redeploy after adding the variables). `vercel.json` runs
    `prisma migrate deploy` before each build, so the schema is created automatically.
-5. Open the site, sign in with any email and the access code, then make yourself an admin
-   in Neon's **SQL Editor**: `UPDATE "User" SET role = 'ADMIN' WHERE email = 'you@example.com';`
+5. Open the site and sign in with any email and the access code. If you skipped
+   `ADMIN_EMAILS`, make an account an admin in Neon's **SQL Editor**:
+   `UPDATE "User" SET role = 'ADMIN' WHERE email = 'you@example.com';`
 
 `vercel.json` also schedules the milestone release job once a day, the most often the
 Hobby plan allows. Every push to the production branch redeploys.

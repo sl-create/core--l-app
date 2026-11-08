@@ -19,7 +19,6 @@ import {
 import { ActionError, assert } from "./errors";
 import { announceLevelChange } from "./levels";
 import { postSystemMessage } from "./messages";
-import { formatUtc } from "@/lib/format";
 
 /** Bookings in these states hold a seat on the trip. */
 export const SEAT_HOLDING: BookingStatus[] = ["ACCEPTED", "FUNDED", "COMPLETED", "DISPUTED"];
@@ -316,9 +315,11 @@ export async function claimMilestone(travellerId: string, milestoneId: string, n
   assert(count === 1, "This milestone has already been claimed");
   const { sender, traveller } = await parties(milestone.bookingId);
   const label = MILESTONE_LABELS[milestone.type];
+  // A stored message can't follow each reader's timezone, so give the window as a duration.
+  const windowHours = Math.round((claimExpiresAt.getTime() - now.getTime()) / 3_600_000);
   await postSystemMessage(
     milestone.bookingId,
-    `${traveller.name} marked "${label}" as done${note ? ` ("${note}")` : ""}. ${sender.name}, please confirm or dispute by ${formatUtc(claimExpiresAt)}, or it confirms automatically.`,
+    `${traveller.name} marked "${label}" as done${note ? ` ("${note}")` : ""}. ${sender.name}, please confirm or dispute within ${windowHours} hours, or it confirms automatically.`,
     { userIds: [sender.id], subject: `Please confirm: ${label}` },
   );
 }

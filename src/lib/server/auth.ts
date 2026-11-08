@@ -74,8 +74,26 @@ export async function signInWithToken(token: string) {
   });
   assert(count === 1, "This sign-in link has expired or was already used. Request a new one.");
   const { email } = await db.loginToken.findUniqueOrThrow({ where: { tokenHash } });
-  const user = await db.user.upsert({ where: { email }, update: {}, create: { email, name: "" } });
+  const admin = adminEmails().has(email);
+  const user = await db.user.upsert({
+    where: { email },
+    update: admin ? { role: "ADMIN" } : {},
+    create: { email, name: "", ...(admin ? { role: "ADMIN" as const } : {}) },
+  });
   assert(!user.suspendedAt, "This account is suspended. Contact Ajo support.");
   await startSession(user.id);
   return user;
+}
+
+/**
+ * Emails in ADMIN_EMAILS (comma-separated) become admins when they sign in. Removing an
+ * email does not demote the account; change its role in the database for that.
+ */
+function adminEmails(): Set<string> {
+  return new Set(
+    (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }

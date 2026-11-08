@@ -6,6 +6,7 @@ import { milestonePayouts, unreleasedPayout } from "./milestones";
 import { quote, serviceFeeFor } from "./pricing";
 import { levelBonus, levelChecks, levelFor, visibleFrom, type TravellerStats } from "./levels";
 import { claimWindowEndsAt, claimWindowHours } from "./urgency";
+import { formatAtLocation, journeyProblem, LOCATION_TIMEZONES, zonedTimeToUtc } from "./time";
 
 const now = new Date("2026-10-01T12:00:00Z");
 const days = (n: number) => new Date(now.getTime() + n * 24 * 60 * 60 * 1000);
@@ -221,5 +222,46 @@ describe("traveller levels", () => {
   it("shows new requests to higher levels first", () => {
     expect(visibleFrom(now, "AGBA")).toEqual(now);
     expect(visibleFrom(now, "ARINRIN_AJO")).toEqual(hours(24));
+  });
+});
+
+describe("local times", () => {
+  const toUtc = (wall: string, city: keyof typeof LOCATION_TIMEZONES) =>
+    zonedTimeToUtc(wall, LOCATION_TIMEZONES[city])?.toISOString();
+
+  it("converts wall-clock times in each city to UTC", () => {
+    expect(toUtc("2026-11-12T18:20", "LAGOS")).toBe("2026-11-12T17:20:00.000Z");
+    expect(toUtc("2026-11-12T18:20", "LONDON")).toBe("2026-11-12T18:20:00.000Z");
+    expect(toUtc("2026-11-12T18:20", "NEW_YORK")).toBe("2026-11-12T23:20:00.000Z");
+  });
+
+  it("follows daylight saving", () => {
+    expect(toUtc("2026-07-01T12:00", "LONDON")).toBe("2026-07-01T11:00:00.000Z");
+    expect(toUtc("2026-07-01T12:00", "NEW_YORK")).toBe("2026-07-01T16:00:00.000Z");
+    // Around London's change on 29 March 2026 (01:00 UTC)
+    expect(toUtc("2026-03-29T00:30", "LONDON")).toBe("2026-03-29T00:30:00.000Z");
+    expect(toUtc("2026-03-29T03:00", "LONDON")).toBe("2026-03-29T02:00:00.000Z");
+  });
+
+  it("rejects unreadable input", () => {
+    expect(zonedTimeToUtc("tomorrow", "Europe/London")).toBeNull();
+    expect(zonedTimeToUtc("", "Europe/London")).toBeNull();
+  });
+
+  it("formats a time in the city it belongs to", () => {
+    expect(formatAtLocation(new Date("2026-11-12T17:20:00Z"), "LAGOS")).toBe("Thu, 12 Nov 2026, 18:20 Lagos time");
+    expect(formatAtLocation(new Date("2026-11-12T17:20:00Z"), "NEW_YORK")).toBe("Thu, 12 Nov 2026, 12:20 New York time");
+  });
+});
+
+describe("journey sanity check", () => {
+  it("accepts normal journeys, connections included", () => {
+    expect(journeyProblem(now, hours(7))).toBeNull();
+    expect(journeyProblem(now, hours(30))).toBeNull();
+  });
+
+  it("rejects arrivals before departure or more than two days later", () => {
+    expect(journeyProblem(now, now)).toMatch(/after departure/);
+    expect(journeyProblem(now, days(4))).toMatch(/96 hours/);
   });
 });

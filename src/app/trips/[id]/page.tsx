@@ -6,7 +6,7 @@ import { DOCUMENT_LABELS } from "@/lib/domain/documents";
 import { SEAT_HOLDING } from "@/lib/server/bookings";
 import { db } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/session";
-import { ErrorBanner, Field, formatUtc, Money, PageHeader, Route, StatusBadge } from "@/components/ui";
+import { ErrorBanner, Field, formatAt, Money, PageHeader, Route, StatusBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { RequestFeed } from "@/components/request-feed";
 
@@ -27,14 +27,14 @@ export default async function TripPage({ params, searchParams }: PageProps<"/tri
     <div className="space-y-8">
       <PageHeader
         title={<Route origin={trip.origin} destination={trip.destination} />}
-        subtitle={`Departs ${formatUtc(trip.departureAt)}`}
+        subtitle={`Departs ${formatAt(trip.departureAt, trip.origin)}`}
         action={<StatusBadge status={trip.status} />}
       />
       <ErrorBanner message={error} />
       <section className="card">
         <dl className="grid gap-4 sm:grid-cols-3">
-          <Field label="Departure">{formatUtc(trip.departureAt)}</Field>
-          <Field label="Arrival">{formatUtc(trip.arrivalAt)}</Field>
+          <Field label="Departure">{formatAt(trip.departureAt, trip.origin)}</Field>
+          <Field label="Arrival">{formatAt(trip.arrivalAt, trip.destination)}</Field>
           <Field label="Capacity">{seatsTaken} of {trip.capacity} booked</Field>
           <Field label="Cancellation policy">
             <span className="font-medium">{trip.cancellationPolicy.charAt(0) + trip.cancellationPolicy.slice(1).toLowerCase()}</span>

@@ -33,6 +33,16 @@ A trip matches a request when:
 
 Matches are ranked by trust tier, then by earliest arrival.
 
+### Times and places (`time.ts`)
+- Times belong to a city, like an airline ticket. A trip's departure is entered and shown
+  in the origin's local time and its arrival in the destination's. A request's handover time
+  uses the origin and its deadline the destination. Lagos, London and New York, with
+  daylight saving. Everything is stored in UTC.
+- Moments not tied to a city (messages, milestone claims, audit entries) show in the
+  viewer's own timezone.
+- A trip must arrive after it departs and take at most 48 hours, connections included, so
+  a mistyped arrival date is caught.
+
 ### Urgency, pricing and claim windows (`urgency.ts`, `pricing.ts`)
 Urgency is set by the time left until the deadline when the booking is made:
 
@@ -133,7 +143,6 @@ Verified" tier is folded into Olóòótọ́ (and the migration converts existin
 - Split refunds (a partial release to the traveller) in dispute resolution
 - Photo attachments in messages (proof for milestones)
 - SMS/WhatsApp notifications and per-user notification settings
-- Timezone-aware times (everything is shown in UTC)
 - Mobile apps
 
 ## Open questions

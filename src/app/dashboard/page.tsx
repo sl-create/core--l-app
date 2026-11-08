@@ -3,7 +3,7 @@ import { DOCUMENT_LABELS } from "@/lib/domain/documents";
 import { db } from "@/lib/server/db";
 import { unreadCounts } from "@/lib/server/messages";
 import { requireUser } from "@/lib/server/session";
-import { formatUtc, PageHeader, Route, StatusBadge } from "@/components/ui";
+import { formatAt, PageHeader, Route, StatusBadge } from "@/components/ui";
 
 export default async function Dashboard() {
   const user = await requireUser();
@@ -93,7 +93,7 @@ export default async function Dashboard() {
                 <Link href={`/requests/${r.id}`} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-background">
                   <span className="font-medium">{DOCUMENT_LABELS[r.documentType]}</span>
                   <Route origin={r.origin} destination={r.destination} />
-                  <span className="text-sm text-muted">by {formatUtc(r.deadline)}</span>
+                  <span className="text-sm text-muted">by {formatAt(r.deadline, r.destination)}</span>
                   <span className="ml-auto"><StatusBadge status={r.status} /></span>
                 </Link>
               </li>
@@ -112,7 +112,7 @@ export default async function Dashboard() {
               <li key={t.id}>
                 <Link href={`/trips/${t.id}`} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-background">
                   <Route origin={t.origin} destination={t.destination} />
-                  <span className="text-sm text-muted">departs {formatUtc(t.departureAt)}</span>
+                  <span className="text-sm text-muted">departs {formatAt(t.departureAt, t.origin)}</span>
                   {t._count.bookings > 0 && (
                     <span className="text-sm font-medium text-accent">
                       {t._count.bookings} new request{t._count.bookings > 1 && "s"}

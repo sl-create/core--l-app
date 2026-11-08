@@ -12,7 +12,7 @@ import { requireUser } from "@/lib/server/session";
 import {
   ErrorBanner,
   Field,
-  formatUtc,
+  formatAt,
   LevelBadge,
   Money,
   PageHeader,
@@ -107,8 +107,8 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
 
       <section className="card">
         <dl className="grid gap-4 sm:grid-cols-3">
-          <Field label="Ready from">{formatUtc(request.availableFrom)}</Field>
-          <Field label="Deadline">{formatUtc(request.deadline)}</Field>
+          <Field label="Ready from">{formatAt(request.availableFrom, request.origin)}</Field>
+          <Field label="Deadline">{formatAt(request.deadline, request.destination)}</Field>
           <Field label="Pickup area">{request.pickupCity}</Field>
           <Field label="Recipient">{request.recipientName} · {request.recipientPhone}</Field>
           <Field label="Who can carry it">
@@ -139,7 +139,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
                 <div className="min-w-0 flex-1">
                   <TravellerSummary traveller={b.trip.traveller} />
                   <p className="mt-1 text-sm text-muted">
-                    Departs {formatUtc(b.trip.departureAt)} · lands {formatUtc(b.trip.arrivalAt)}
+                    Departs {formatAt(b.trip.departureAt, b.trip.origin)} · lands {formatAt(b.trip.arrivalAt, b.trip.destination)}
                   </p>
                   <p className="mt-1 text-sm">
                     <Money amount={b.total} currency={b.currency} /> total ·{" "}
@@ -162,7 +162,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
               <li key={b.id}>
                 <Link href={`/bookings/${b.id}`} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-background">
                   <span className="font-medium">{b.trip.traveller.name}</span>
-                  <span className="text-sm text-muted">departs {formatUtc(b.trip.departureAt)}</span>
+                  <span className="text-sm text-muted">departs {formatAt(b.trip.departureAt, b.trip.origin)}</span>
                   <Money amount={b.total} currency={b.currency} />
                   <span className="ml-auto"><StatusBadge status={b.status} /></span>
                 </Link>
@@ -192,7 +192,7 @@ export default async function RequestPage({ params, searchParams }: PageProps<"/
                   <div className="min-w-0 flex-1">
                     <TravellerSummary traveller={t.traveller} />
                     <p className="mt-1 text-sm text-muted">
-                      Departs {formatUtc(t.departureAt)} · lands {formatUtc(t.arrivalAt)}
+                      Departs {formatAt(t.departureAt, t.origin)} · lands {formatAt(t.arrivalAt, t.destination)}
                     </p>
                     <p className="mt-1 text-xs text-muted">
                       {t.cancellationPolicy.charAt(0) + t.cancellationPolicy.slice(1).toLowerCase()} cancellation:{" "}

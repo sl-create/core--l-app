@@ -52,7 +52,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <>
                   <span className="hidden text-muted sm:inline">{user.name}</span>
                   <form action={logout}>
-                    <button className="btn-secondary">Sign out</button>
+                    <button className="btn-secondary whitespace-nowrap">Sign out</button>
                   </form>
                 </>
               ) : (

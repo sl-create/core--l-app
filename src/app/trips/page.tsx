@@ -3,7 +3,7 @@ import { LOCATION_LABELS, LOCATIONS, type Location } from "@/lib/domain/location
 import { db } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/session";
 import { levelOf } from "@/lib/domain/levels";
-import { formatUtc, LevelBadge, PageHeader, Route } from "@/components/ui";
+import { formatAt, LevelBadge, PageHeader, Route } from "@/components/ui";
 
 export default async function TripsPage({ searchParams }: PageProps<"/trips">) {
   await requireUser();
@@ -56,7 +56,7 @@ export default async function TripsPage({ searchParams }: PageProps<"/trips">) {
           {trips.map((t) => (
             <li key={t.id} className="flex flex-wrap items-center gap-3 px-5 py-4">
               <Route origin={t.origin} destination={t.destination} />
-              <span className="text-sm text-muted">departs {formatUtc(t.departureAt)}</span>
+              <span className="text-sm text-muted">departs {formatAt(t.departureAt, t.origin)}</span>
               <span className="ml-auto flex items-center gap-2 text-sm">
                 <Link href={`/travellers/${t.traveller.id}`} className="hover:underline">{t.traveller.name}</Link>{" "}
                 <LevelBadge level={levelOf(t.traveller)} />

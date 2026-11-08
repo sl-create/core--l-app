@@ -6,7 +6,7 @@ import { LEVEL_INFO, levelBonus, levelOf, meetsLevel, visibleFrom } from "@/lib/
 import { ineligibilityReasons } from "@/lib/domain/matching";
 import { quote } from "@/lib/domain/pricing";
 import { db } from "@/lib/server/db";
-import { formatUtc, LevelBadge, Money } from "./ui";
+import { formatAt, LocalTime, LevelBadge, Money } from "./ui";
 import { SubmitButton } from "./submit-button";
 
 const HIGH_VALUE = ["EXPRESS", "URGENT"];
@@ -56,7 +56,7 @@ export async function RequestFeed({ trip, traveller, seatsLeft }: { trip: Trip; 
         <div className="rounded-xl border border-dashed border-accent/60 px-4 py-3 text-sm">
           <strong>{upcoming.length} new request{upcoming.length > 1 && "s"}</strong> on this route{" "}
           {upcoming.length > 1 ? "are" : "is"} with higher-level travellers first. The next one reaches
-          you at {formatUtc(nextUnlock)}.{" "}
+          you at <LocalTime date={nextUnlock} />.{" "}
           <Link href="/levels" className="link">Level up to see requests sooner</Link>
         </div>
       )}
@@ -86,7 +86,7 @@ export async function RequestFeed({ trip, traveller, seatsLeft }: { trip: Trip; 
                     )}
                   </div>
                   <p className="mt-1 text-sm text-muted">
-                    Pickup {r.pickupCity} · deliver by {formatUtc(r.deadline)}
+                    Pickup {r.pickupCity} · deliver by {formatAt(r.deadline, r.destination)}
                   </p>
                   <p className="mt-1 text-sm">
                     You earn <strong><Money amount={q.travellerPayout + bonus} currency={q.currency} /></strong>

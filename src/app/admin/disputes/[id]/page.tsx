@@ -8,7 +8,7 @@ import { listMessages, MAX_MESSAGE_LENGTH } from "@/lib/server/messages";
 import { MessageThread } from "@/components/message-thread";
 import { db } from "@/lib/server/db";
 import { levelOf } from "@/lib/domain/levels";
-import { ErrorBanner, Field, formatUtc, LevelBadge, Money, PageHeader, Route, StatusBadge, TrustBadge } from "@/components/ui";
+import { ErrorBanner, Field, formatAt, LocalTime, LevelBadge, Money, PageHeader, Route, StatusBadge, TrustBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 
 export default async function DisputePage({ params, searchParams }: PageProps<"/admin/disputes/[id]">) {
@@ -61,7 +61,7 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
       <ErrorBanner message={error} />
 
       <section className="card border-danger/40">
-        <p className="text-xs uppercase tracking-wide text-muted">Sender&apos;s complaint · {formatUtc(dispute.createdAt)}</p>
+        <p className="text-xs uppercase tracking-wide text-muted">Sender&apos;s complaint · <LocalTime date={dispute.createdAt} /></p>
         <p className="mt-1 whitespace-pre-wrap">{dispute.reason}</p>
         {dispute.milestone.note && (
           <>
@@ -81,8 +81,8 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
         <dl className="mb-4 grid gap-4 sm:grid-cols-4">
           <Field label="Status"><StatusBadge status={booking.status} /></Field>
           <Field label="Paid">{money(booking.total)}</Field>
-          <Field label="Flight">{formatUtc(trip.departureAt)}</Field>
-          <Field label="Deadline">{formatUtc(request.deadline)}</Field>
+          <Field label="Flight">{formatAt(trip.departureAt, trip.origin)}</Field>
+          <Field label="Deadline">{formatAt(request.deadline, request.destination)}</Field>
         </dl>
         <ul className="space-y-2 text-sm">
           {booking.milestones.map((m) => (
@@ -90,7 +90,7 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
               <StatusBadge status={m.status} />
               <span>{MILESTONE_LABELS[m.type]}</span>
               <span className="text-muted">{money(m.payout)}</span>
-              {m.claimedAt && <span className="text-muted">claimed {formatUtc(m.claimedAt)}</span>}
+              {m.claimedAt && <span className="text-muted">claimed <LocalTime date={m.claimedAt} /></span>}
               {m.transferId && <span className="text-muted">paid out</span>}
             </li>
           ))}
@@ -151,7 +151,7 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
             {dispute.outcome === "RELEASED_TO_TRAVELLER"
               ? "Released to traveller"
               : <>Refunded {money(dispute.refundAmount ?? 0)} to sender</>}{" "}
-            by {dispute.resolvedBy?.name} on {dispute.resolvedAt && formatUtc(dispute.resolvedAt)}
+            by {dispute.resolvedBy?.name} on {dispute.resolvedAt && <LocalTime date={dispute.resolvedAt} />}
           </p>
           <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{dispute.resolutionNote}</p>
         </section>

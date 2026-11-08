@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { CANCELLATION_POLICIES } from "@/lib/domain/cancellation";
 import { DOCUMENT_MIN_LEVEL, DOCUMENT_TYPES } from "@/lib/domain/documents";
-import { LOCATIONS } from "@/lib/domain/locations";
+import { LOCATIONS, type Location } from "@/lib/domain/locations";
+import { journeyProblem, LOCATION_TIMEZONES, zonedTimeToUtc } from "@/lib/domain/time";
 import { LEVELS, meetsLevel } from "@/lib/domain/levels";
 import { startIdentityVerification, startPayoutOnboarding } from "@/lib/server/accounts";
 import * as bookings from "@/lib/server/bookings";
@@ -38,12 +39,19 @@ function parse<T extends z.ZodType>(schema: T, form: FormData, path: string): z.
   return result.data;
 }
 
-// <input type="datetime-local"> has no timezone. Ajo treats every time as UTC.
-const utcDate = z
-  .string()
-  .min(1, "Required")
-  .transform((v) => new Date(v.length === 16 ? `${v}:00Z` : v))
-  .refine((d) => !Number.isNaN(d.getTime()), "Invalid date");
+// <input type="datetime-local"> sends a wall-clock time with no timezone. The schemas
+// below read it in the city it belongs to (see src/lib/domain/time.ts).
+const wallTime = z.string().min(1, "Required");
+
+/** Reads a form's wall-clock time in a city's timezone, adding a form issue if unreadable. */
+function atCity(value: string, location: Location, path: string, ctx: z.RefinementCtx): Date {
+  const date = zonedTimeToUtc(value, LOCATION_TIMEZONES[location]);
+  if (!date) {
+    ctx.addIssue({ code: "custom", path: [path], message: "Invalid date" });
+    return new Date(NaN);
+  }
+  return date;
+}
 
 // ── Session ────────────────────────────────────────────────────────────
 
@@ -100,8 +108,8 @@ const requestSchema = z
     description: z.string().trim().max(500).optional(),
     origin: z.enum(LOCATIONS),
     destination: z.enum(LOCATIONS),
-    availableFrom: utcDate,
-    deadline: utcDate,
+    availableFrom: wallTime,
+    deadline: wallTime,
     minLevel: z.enum(LEVELS),
     pickupCity: z.string().trim().min(1).max(80),
     recipientName: z.string().trim().min(1).max(80),
@@ -111,6 +119,11 @@ const requestSchema = z
     path: ["destination"],
     message: "Must differ from origin",
   })
+  .transform((r, ctx) => ({
+    ...r,
+    availableFrom: atCity(r.availableFrom, r.origin, "availableFrom", ctx),
+    deadline: atCity(r.deadline, r.destination, "deadline", ctx),
+  }))
   .refine((r) => r.deadline > r.availableFrom, {
     path: ["deadline"],
     message: "Must be after the document is ready",
@@ -143,8 +156,8 @@ const tripSchema = z
   .object({
     origin: z.enum(LOCATIONS),
     destination: z.enum(LOCATIONS),
-    departureAt: utcDate,
-    arrivalAt: utcDate,
+    departureAt: wallTime,
+    arrivalAt: wallTime,
     capacity: z.coerce.number().int().min(1).max(10),
     cancellationPolicy: z.enum(CANCELLATION_POLICIES),
     notes: z.string().trim().max(500).optional(),
@@ -153,9 +166,14 @@ const tripSchema = z
     path: ["destination"],
     message: "Must differ from origin",
   })
-  .refine((t) => t.arrivalAt > t.departureAt, {
-    path: ["arrivalAt"],
-    message: "Must be after departure",
+  .transform((t, ctx) => ({
+    ...t,
+    departureAt: atCity(t.departureAt, t.origin, "departureAt", ctx),
+    arrivalAt: atCity(t.arrivalAt, t.destination, "arrivalAt", ctx),
+  }))
+  .superRefine((t, ctx) => {
+    const problem = journeyProblem(t.departureAt, t.arrivalAt);
+    if (problem) ctx.addIssue({ code: "custom", path: ["arrivalAt"], message: problem });
   })
   .refine((t) => t.departureAt > new Date(), {
     path: ["departureAt"],
