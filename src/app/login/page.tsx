@@ -3,10 +3,12 @@ import { requestLogin } from "../actions";
 import { ErrorBanner } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { currentUser } from "@/lib/server/session";
+import { onScreenLinkMode } from "@/lib/server/auth";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   if (await currentUser()) redirect("/dashboard");
   const { error } = await searchParams;
+  const demo = onScreenLinkMode() === "demo";
   return (
     <div className="mx-auto max-w-sm">
       <h1 className="mb-2 text-2xl font-bold tracking-tight">Sign in to Ajo</h1>
@@ -17,6 +19,13 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <label className="label" htmlFor="email">Email</label>
           <input className="input" id="email" name="email" type="email" required autoComplete="email" autoFocus />
         </div>
+        {demo && (
+          <div>
+            <label className="label" htmlFor="code">Access code</label>
+            <input className="input" id="code" name="code" type="password" required autoComplete="off" />
+            <p className="mt-1 text-sm text-muted">This is a private test version of Ajo.</p>
+          </div>
+        )}
         <SubmitButton>Email me a sign-in link</SubmitButton>
       </form>
     </div>

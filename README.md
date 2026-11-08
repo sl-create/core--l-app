@@ -41,7 +41,8 @@ Only SHA-256 hashes of link and session tokens are stored. Sessions live in the 
 for 30 days. Signing out deletes the session, and suspending a user deletes all of theirs.
 
 In development without `RESEND_API_KEY`, the "check your email" page shows the link
-directly so you can sign in locally. In production, sign-in needs Resend configured.
+directly so you can sign in locally. In production, sign-in needs Resend configured, or
+`DEMO_ACCESS_CODE` on a private test deploy (see below).
 
 ## Scripts
 
@@ -123,6 +124,25 @@ Every booking has one thread shared by the sender, the traveller and Ajo support
 - **Email** (`src/lib/server/mailer.ts`) uses Resend when `RESEND_API_KEY` is set, and
   otherwise prints to the server log. A chat message is emailed only when it is the first
   one the recipient hasn't read yet, so conversations don't flood inboxes.
+
+## Deploying a test version (Vercel + Neon)
+
+A free, permanent test deploy you can open on any device. Payments stay simulated.
+
+1. On [vercel.com](https://vercel.com), sign up with GitHub and import this repository.
+   Pick this branch as the production branch, or merge it to your default branch first.
+2. In the project, open **Storage**, add a **Neon** Postgres database and connect it. This
+   sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+3. In **Settings → Environment Variables**, add:
+   - `DEMO_ACCESS_CODE`: a code you choose. You type it on the sign-in form.
+   - `CRON_SECRET`: a long random string. Vercel sends it to the cron route.
+4. Deploy (or redeploy after adding the variables). `vercel.json` runs
+   `prisma migrate deploy` before each build, so the schema is created automatically.
+5. Open the site, sign in with any email and the access code, then make yourself an admin
+   in Neon's **SQL Editor**: `UPDATE "User" SET role = 'ADMIN' WHERE email = 'you@example.com';`
+
+`vercel.json` also schedules the milestone release job once a day, the most often the
+Hobby plan allows. Every push to the production branch redeploys.
 
 ## Stripe setup
 

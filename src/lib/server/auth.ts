@@ -1,4 +1,5 @@
 import "server-only";
+import { timingSafeEqual } from "node:crypto";
 import { db } from "./db";
 import { assert } from "./errors";
 import { mailerConfigured, sendEmail } from "./mailer";
@@ -12,18 +13,19 @@ const MAX_LINKS_PER_HOUR = 5;
  * Emails a single-use sign-in link. Works the same whether or not the account
  * exists, so the form does not reveal who is registered.
  *
- * Returns the link itself only in development without an email provider, so
- * you can sign in locally.
+ * Returns the link itself (as a relative path) when there is no email provider:
+ * in development, or on a demo deploy when the right access code is given.
  */
-export async function requestLoginLink(rawEmail: string): Promise<string | null> {
+export async function requestLoginLink(rawEmail: string, accessCode = ""): Promise<string | null> {
   const email = rawEmail.trim().toLowerCase();
+  const onScreen = onScreenLinkMode();
+  if (onScreen === "demo") assert(demoCodeMatches(accessCode), "That access code is not right.");
   const recent = await db.loginToken.count({
     where: { email, createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) } },
   });
   assert(recent < MAX_LINKS_PER_HOUR, "Too many sign-in links requested. Try again in an hour.");
 
-  const devMode = !mailerConfigured() && process.env.NODE_ENV !== "production";
-  assert(mailerConfigured() || devMode, "Email sign-in is not configured yet.");
+  assert(mailerConfigured() || onScreen, "Email sign-in is not configured yet.");
 
   const token = newToken();
   await db.loginToken.create({
@@ -42,7 +44,24 @@ export async function requestLoginLink(rawEmail: string): Promise<string | null>
   });
   // Relative, so the on-screen link works whatever host the dev server is reached through
   // (a phone on the LAN, a tunnel or a preview proxy).
-  return devMode ? path : null;
+  return onScreen ? path : null;
+}
+
+/**
+ * Whether sign-in links are shown on screen instead of only emailed. Only without an
+ * email provider: "dev" locally, "demo" on a deploy that sets DEMO_ACCESS_CODE (anyone
+ * with the code can sign in as any email, so use it only for private testing).
+ */
+export function onScreenLinkMode(): "dev" | "demo" | null {
+  if (mailerConfigured()) return null;
+  if (process.env.DEMO_ACCESS_CODE) return "demo";
+  return process.env.NODE_ENV !== "production" ? "dev" : null;
+}
+
+function demoCodeMatches(given: string): boolean {
+  const a = Buffer.from(given.trim());
+  const b = Buffer.from(process.env.DEMO_ACCESS_CODE ?? "");
+  return b.length > 0 && a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** Uses up a sign-in link, creating the account on first sign-in, and starts a session. */

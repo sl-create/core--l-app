@@ -117,6 +117,9 @@ Verified" tier is folded into Olóòótọ́ (and the migration converts existin
 ### Accounts
 - Passwordless sign-in with single-use email links (15 minutes, at most 5 per hour).
 - New accounts pick a display name, which should match their ID for verification.
+- Private test deploys can set `DEMO_ACCESS_CODE` instead of an email provider. The sign-in
+  form then asks for the code and shows the link on screen. Anyone with the code can sign in
+  as any email, so this is for testing only, never for real users.
 
 ### Messaging
 - Each booking has one thread between the sender and traveller. Ajo support can join as

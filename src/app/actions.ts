@@ -48,8 +48,12 @@ const utcDate = z
 // ── Session ────────────────────────────────────────────────────────────
 
 export async function requestLogin(form: FormData) {
-  const { email } = parse(z.object({ email: z.email().toLowerCase() }), form, "/login");
-  const devLink = await run("/login", () => requestLoginLink(email));
+  const { email, code } = parse(
+    z.object({ email: z.email().toLowerCase(), code: z.string().max(200).optional().default("") }),
+    form,
+    "/login",
+  );
+  const devLink = await run("/login", () => requestLoginLink(email, code));
   const qs = new URLSearchParams({ email });
   if (devLink) qs.set("dev", devLink);
   redirect(`/login/check?${qs}`);
