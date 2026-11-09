@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   url       = env("DATABASE_URL")
   // Direct (non-pooled) connection for migrations. Locally, the same as DATABASE_URL.
   directUrl = env("DATABASE_URL_UNPOOLED")
@@ -91,6 +91,7 @@ enum DisputeStatus {
 enum DisputeOutcome {
   RELEASED_TO_TRAVELLER // claim upheld, the milestone is paid and the journey continues
   REFUNDED_TO_SENDER // escrow still held goes back to the sender, and the booking ends
+  SPLIT // the traveller gets part of what is held, the sender the rest, and the booking ends
 }
 
 enum MessageKind {
@@ -240,22 +241,25 @@ model Milestone {
 }
 
 model Dispute {
-  id             String          @id @default(cuid())
-  bookingId      String
-  booking        Booking         @relation(fields: [bookingId], references: [id])
-  milestoneId    String
-  milestone      Milestone       @relation(fields: [milestoneId], references: [id])
-  openedById     String
-  openedBy       User            @relation("DisputeOpenedBy", fields: [openedById], references: [id])
-  reason         String
-  status         DisputeStatus   @default(OPEN)
-  outcome        DisputeOutcome?
-  resolutionNote String?
-  refundAmount   Int?
-  resolvedById   String?
-  resolvedBy     User?           @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
-  resolvedAt     DateTime?
-  createdAt      DateTime        @default(now())
+  id              String          @id @default(cuid())
+  bookingId       String
+  booking         Booking         @relation(fields: [bookingId], references: [id])
+  milestoneId     String
+  milestone       Milestone       @relation(fields: [milestoneId], references: [id])
+  openedById      String
+  openedBy        User            @relation("DisputeOpenedBy", fields: [openedById], references: [id])
+  reason          String
+  status          DisputeStatus   @default(OPEN)
+  outcome         DisputeOutcome?
+  resolutionNote  String?
+  refundAmount    Int?
+  /// SPLIT only: what the traveller is paid, and the transfer once it goes through
+  travellerAmount Int?
+  transferId      String?
+  resolvedById    String?
+  resolvedBy      User?           @relation("DisputeResolvedBy", fields: [resolvedById], references: [id])
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
 
   @@index([status, createdAt])
   @@index([bookingId])

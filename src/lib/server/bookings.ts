@@ -13,6 +13,7 @@ import {
   createCheckout,
   paymentsSimulated,
   refundSender,
+  payDisputeShare,
   releaseMilestoneFunds,
   transferToTraveller,
 } from "./escrow";
@@ -406,6 +407,26 @@ export async function payOut(milestoneId: string) {
   }
 }
 
+/** Pays the traveller's share of a split dispute, once. Failures are retried by the cron job. */
+export async function payDisputeSplit(disputeId: string) {
+  const dispute = await db.dispute.findUniqueOrThrow({
+    where: { id: disputeId },
+    include: { booking: { include: { trip: { include: { traveller: true } } } } },
+  });
+  if (dispute.outcome !== "SPLIT" || !dispute.travellerAmount || dispute.transferId) return;
+  try {
+    const transferId = await payDisputeShare(
+      dispute.booking,
+      dispute.id,
+      dispute.travellerAmount,
+      dispute.booking.trip.traveller.stripeAccountId,
+    );
+    await db.dispute.updateMany({ where: { id: disputeId, transferId: null }, data: { transferId } });
+  } catch (err) {
+    console.error(`Payout for split dispute ${disputeId} failed`, err);
+  }
+}
+
 export async function completeIfDone(milestoneId: string) {
   const { bookingId } = await db.milestone.findUniqueOrThrow({ where: { id: milestoneId } });
   const completed = await db.$transaction(async (tx) => {
@@ -517,7 +538,12 @@ export async function retryFailedTransfers() {
     select: { id: true },
   });
   for (const { id } of bonuses) await payLevelBonus(id);
-  return pending.length + bonuses.length;
+  const splits = await db.dispute.findMany({
+    where: { outcome: "SPLIT", travellerAmount: { gt: 0 }, transferId: null },
+    select: { id: true },
+  });
+  for (const { id } of splits) await payDisputeSplit(id);
+  return pending.length + bonuses.length + splits.length;
 }
 
 export async function cancelBooking(userId: string, bookingId: string) {

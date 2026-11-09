@@ -89,6 +89,16 @@ export async function releaseMilestoneFunds(
   });
 }
 
+/** Pays the traveller's share of a split dispute resolution. Safe to retry. */
+export async function payDisputeShare(
+  booking: Booking,
+  disputeId: string,
+  amount: number,
+  destinationAccountId: string | null,
+): Promise<string> {
+  return transferToTraveller({ booking, amount, destinationAccountId, idempotencyKey: `dispute-${disputeId}` });
+}
+
 export async function refundSender(booking: Booking, amount: number): Promise<string | null> {
   if (amount <= 0) return null;
   if (!stripe) return `sim_re_${booking.id}`;

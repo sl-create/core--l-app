@@ -271,7 +271,9 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                   ? "Under review. Funds stay in escrow until the Ajo team resolves this dispute."
                   : d.outcome === "RELEASED_TO_TRAVELLER"
                     ? "Dispute resolved: the milestone was confirmed and paid to the traveller."
-                    : <>Dispute resolved: {money(d.refundAmount ?? 0)} refunded to the sender.</>}
+                    : d.outcome === "SPLIT"
+                      ? <>Dispute resolved: {money(d.travellerAmount ?? 0)} paid to the traveller and {money(d.refundAmount ?? 0)} refunded to the sender.</>
+                      : <>Dispute resolved: {money(d.refundAmount ?? 0)} refunded to the sender.</>}
               </p>
               <p className="mt-1">Complaint: {d.reason}</p>
               {d.resolutionNote && <p className="mt-1">Ajo team: {d.resolutionNote}</p>}

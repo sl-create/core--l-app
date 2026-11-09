@@ -6,6 +6,7 @@ import { milestonePayouts, unreleasedPayout } from "./milestones";
 import { quote, serviceFeeFor } from "./pricing";
 import { levelBonus, levelChecks, levelFor, visibleFrom, type TravellerStats } from "./levels";
 import { claimWindowEndsAt, claimWindowHours } from "./urgency";
+import { parseMoneyInput, splitEscrow } from "./disputes";
 import { formatAtLocation, journeyProblem, LOCATION_TIMEZONES, zonedTimeToUtc } from "./time";
 
 const now = new Date("2026-10-01T12:00:00Z");
@@ -263,5 +264,37 @@ describe("journey sanity check", () => {
   it("rejects arrivals before departure or more than two days later", () => {
     expect(journeyProblem(now, now)).toMatch(/after departure/);
     expect(journeyProblem(now, days(4))).toMatch(/96 hours/);
+  });
+});
+
+describe("split dispute resolutions", () => {
+  const base = { unreleasedPayout: 3750, serviceFee: 750, refundServiceFee: false };
+
+  it("reads amounts typed by admins", () => {
+    expect(parseMoneyInput("12")).toBe(1200);
+    expect(parseMoneyInput("12.5")).toBe(1250);
+    expect(parseMoneyInput(" £1,012.05 ")).toBe(101205);
+    expect(parseMoneyInput("12.345")).toBeNull();
+    expect(parseMoneyInput("-5")).toBeNull();
+    expect(parseMoneyInput("")).toBeNull();
+  });
+
+  it("gives the traveller their part and the sender the rest", () => {
+    expect(splitEscrow({ ...base, toTraveller: 1250 })).toEqual({ ok: true, toTraveller: 1250, toSender: 2500 });
+    expect(splitEscrow({ ...base, toTraveller: 1250, refundServiceFee: true })).toEqual({
+      ok: true,
+      toTraveller: 1250,
+      toSender: 3250,
+    });
+  });
+
+  it("allows paying the traveller everything still held", () => {
+    expect(splitEscrow({ ...base, toTraveller: 3750 })).toEqual({ ok: true, toTraveller: 3750, toSender: 0 });
+  });
+
+  it("rejects nothing for the traveller or more than is held", () => {
+    expect(splitEscrow({ ...base, toTraveller: 0 }).ok).toBe(false);
+    expect(splitEscrow({ ...base, toTraveller: 3751 }).ok).toBe(false);
+    expect(splitEscrow({ ...base, toTraveller: 12.5 }).ok).toBe(false);
   });
 });

@@ -107,7 +107,9 @@ Grant the role by listing the email in `ADMIN_EMAILS` (applied at their next sig
 - **Disputes**: see the complaint, the traveller's claim note and the escrow state, then
   either *release to traveller* (pay the milestone, resume the journey) or *refund sender*
   (return what is still in escrow, optionally with the service fee, end the booking, and count
-  an upheld dispute against the traveller). The resolution note is shown to both parties.
+  an upheld dispute against the traveller), or *split* (pay the traveller part of what is
+  still held, refund the rest, end the booking, and optionally count an upheld dispute).
+  The resolution note is shown to both parties.
 - **Users**: search, change verification, approve Àgbà, suspend or lift a suspension. Suspended users are
   signed out and their trips disappear from matching.
 - **Audit log**: every admin action with who, when and why. Reasons are required.

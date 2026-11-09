@@ -117,10 +117,16 @@ Verified" tier is folded into Olóòótọ́ (and the migration converts existin
 ### Disputes and trust & safety
 - A sender can dispute a claimed milestone. That freezes the booking: no auto-release,
   no further payouts.
-- An admin resolves it by **releasing** (the milestone is paid and the journey continues) or
-  **refunding** (unreleased escrow goes back to the sender, the service fee optionally too,
-  and the booking ends). A refund counts as an upheld dispute against the traveller, which
-  counts as a strike towards their level.
+- An admin resolves it in one of three ways (`disputes.ts`):
+  - **Release**: the milestone is paid and the journey continues.
+  - **Refund**: unreleased escrow goes back to the sender, the service fee optionally too,
+    and the booking ends. Counts as an upheld dispute against the traveller, which is a
+    strike towards their level.
+  - **Split**: the traveller gets part of their unreleased payout (more than nothing, at most
+    all of it), the sender gets the rest, the service fee optionally too, and the booking
+    ends. Counts as an upheld dispute only if the admin ticks it. A failed payout to the
+    traveller is retried by the cron job.
+- Money already released for confirmed milestones is never clawed back.
 - Admins can change trust tiers and suspend accounts. Every admin action is written to an
   audit log with a required reason.
 
@@ -140,7 +146,6 @@ Verified" tier is folded into Olóòótọ́ (and the migration converts existin
   filtered for phone numbers or emails.
 
 ## Not built yet
-- Split refunds (a partial release to the traveller) in dispute resolution
 - Photo attachments in messages (proof for milestones)
 - SMS/WhatsApp notifications and per-user notification settings
 - Mobile apps

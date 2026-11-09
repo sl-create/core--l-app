@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { resolveDispute } from "../../actions";
 import { DOCUMENT_LABELS } from "@/lib/domain/documents";
-import { MILESTONE_LABELS } from "@/lib/domain/milestones";
+import { MILESTONE_LABELS, unreleasedPayout } from "@/lib/domain/milestones";
 import { refundableAmount, requireAdmin } from "@/lib/server/admin";
 import { listMessages, MAX_MESSAGE_LENGTH } from "@/lib/server/messages";
 import { MessageThread } from "@/components/message-thread";
@@ -115,7 +115,7 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
       {dispute.status === "OPEN" ? (
         <form action={resolveDispute.bind(null, dispute.id)} className="card space-y-4">
           <h2 className="font-semibold">Resolve</h2>
-          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-brand">
+          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[input[type=radio]:checked]:border-brand">
             <input type="radio" name="outcome" value="release" defaultChecked className="mt-1" />
             <span>
               <span className="font-medium">Release to traveller</span>
@@ -124,7 +124,7 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
               </span>
             </span>
           </label>
-          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[:checked]:border-danger">
+          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[input[type=radio]:checked]:border-danger">
             <input type="radio" name="outcome" value="refund" className="mt-1" />
             <span>
               <span className="font-medium">Refund sender and end booking</span>
@@ -138,6 +138,32 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
               </span>
             </span>
           </label>
+          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[input[type=radio]:checked]:border-accent">
+            <input type="radio" name="outcome" value="split" className="mt-1" />
+            <span className="min-w-0 flex-1">
+              <span className="font-medium">Split and end booking</span>
+              <span className="block text-sm text-muted">
+                Pay the traveller part of the {money(unreleasedPayout(booking.milestones))} still held for
+                them and refund the rest to the sender.
+              </span>
+              <span className="mt-2 block">
+                <span className="label text-sm" id="toTravellerLabel">Traveller gets</span>
+                <input
+                  className="input max-w-40"
+                  name="toTraveller"
+                  inputMode="decimal"
+                  placeholder="e.g. 12.50"
+                  aria-labelledby="toTravellerLabel"
+                />
+              </span>
+              <span className="mt-2 flex items-center gap-2 text-sm">
+                <input type="checkbox" name="splitServiceFee" /> Also refund the Ajo service fee ({money(booking.serviceFee)})
+              </span>
+              <span className="mt-1 flex items-center gap-2 text-sm">
+                <input type="checkbox" name="upheld" /> Count as an upheld dispute against the traveller
+              </span>
+            </span>
+          </label>
           <div>
             <label className="label" htmlFor="note">Resolution note (shared with both parties)</label>
             <textarea className="input" id="note" name="note" rows={3} required />
@@ -148,9 +174,16 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
         <section className="card">
           <h2 className="mb-2 font-semibold">Resolution</h2>
           <p className="text-sm">
-            {dispute.outcome === "RELEASED_TO_TRAVELLER"
-              ? "Released to traveller"
-              : <>Refunded {money(dispute.refundAmount ?? 0)} to sender</>}{" "}
+            {dispute.outcome === "RELEASED_TO_TRAVELLER" ? (
+              "Released to traveller"
+            ) : dispute.outcome === "SPLIT" ? (
+              <>
+                Split: {money(dispute.travellerAmount ?? 0)} to traveller
+                {dispute.transferId ? "" : " (payout pending)"}, {money(dispute.refundAmount ?? 0)} refunded to sender
+              </>
+            ) : (
+              <>Refunded {money(dispute.refundAmount ?? 0)} to sender</>
+            )}{" "}
             by {dispute.resolvedBy?.name} on {dispute.resolvedAt && <LocalTime date={dispute.resolvedAt} />}
           </p>
           <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{dispute.resolutionNote}</p>

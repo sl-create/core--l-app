@@ -1,8 +1,9 @@
 import "server-only";
 import type { Prisma, TrustTier, User } from "@prisma/client";
 import { notFound } from "next/navigation";
+import { splitEscrow } from "@/lib/domain/disputes";
 import { unreleasedPayout } from "@/lib/domain/milestones";
-import { completeIfDone, payOut } from "./bookings";
+import { completeIfDone, payDisputeSplit, payOut } from "./bookings";
 import { db } from "./db";
 import { refundSender } from "./escrow";
 import { assert } from "./errors";
@@ -101,23 +102,7 @@ export async function refundDispute(
       },
     });
     assert(count === 1, "This dispute is already resolved");
-    await tx.booking.update({
-      where: { id: booking.id },
-      data: {
-        status: "CANCELLED",
-        cancelledAt: new Date(),
-        cancelledBy: "ADMIN",
-        refundedAmount: amount,
-      },
-    });
-    await tx.deliveryRequest.update({
-      where: { id: booking.requestId },
-      data: { status: "CANCELLED" },
-    });
-    await tx.user.update({
-      where: { id: booking.trip.travellerId },
-      data: { upheldDisputes: { increment: 1 } },
-    });
+    await closeBooking(tx, booking, amount, true);
     await audit(tx, admin, "dispute.refund", { type: "Dispute", id: disputeId }, {
       note,
       amount,
@@ -129,6 +114,90 @@ export async function refundDispute(
     `The Ajo team reviewed the dispute and refunded ${formatMoney(amount, booking.currency as Currency)} to the sender. This booking is closed. Note from Ajo: ${note.trim()}`,
   );
   await announceLevelChange(booking.trip.travellerId, levelBefore);
+}
+
+/** Ends a booking after a dispute: records the refund and optionally a strike for the traveller. */
+async function closeBooking(
+  tx: Prisma.TransactionClient,
+  booking: { id: string; requestId: string; trip: { travellerId: string } },
+  refunded: number,
+  upheld: boolean,
+) {
+  await tx.booking.update({
+    where: { id: booking.id },
+    data: { status: "CANCELLED", cancelledAt: new Date(), cancelledBy: "ADMIN", refundedAmount: refunded },
+  });
+  await tx.deliveryRequest.update({ where: { id: booking.requestId }, data: { status: "CANCELLED" } });
+  if (upheld) {
+    await tx.user.update({
+      where: { id: booking.trip.travellerId },
+      data: { upheldDisputes: { increment: 1 } },
+    });
+  }
+}
+
+/**
+ * Both sides have a point: pay the traveller part of what is still held, refund the rest
+ * to the sender (optionally with the service fee) and end the booking. Counts against the
+ * traveller's level only if the admin says the complaint was upheld.
+ */
+export async function splitDispute(
+  admin: User,
+  disputeId: string,
+  note: string,
+  opts: { toTraveller: number; refundServiceFee: boolean; upheld: boolean },
+) {
+  assert(note.trim(), "Add a resolution note");
+  const dispute = await db.dispute.findUnique({
+    where: { id: disputeId },
+    include: { booking: { include: { milestones: true, trip: true } } },
+  });
+  assert(dispute && dispute.status === "OPEN", "This dispute is already resolved");
+  const { booking } = dispute;
+  const split = splitEscrow({
+    unreleasedPayout: unreleasedPayout(booking.milestones),
+    serviceFee: booking.serviceFee,
+    toTraveller: opts.toTraveller,
+    refundServiceFee: opts.refundServiceFee,
+  });
+  assert(split.ok, split.ok ? "" : split.error);
+
+  const levelBefore = await currentLevel(booking.trip.travellerId);
+
+  // Refund first, as in refundDispute: the idempotency key stops a second refund.
+  await refundSender(booking, split.toSender);
+
+  await db.$transaction(async (tx) => {
+    const { count } = await tx.dispute.updateMany({
+      where: { id: disputeId, status: "OPEN" },
+      data: {
+        status: "RESOLVED",
+        outcome: "SPLIT",
+        resolutionNote: note.trim(),
+        refundAmount: split.toSender,
+        travellerAmount: split.toTraveller,
+        resolvedById: admin.id,
+        resolvedAt: new Date(),
+      },
+    });
+    assert(count === 1, "This dispute is already resolved");
+    await closeBooking(tx, booking, split.toSender, opts.upheld);
+    await audit(tx, admin, "dispute.split", { type: "Dispute", id: disputeId }, {
+      note,
+      toTraveller: split.toTraveller,
+      toSender: split.toSender,
+      refundServiceFee: opts.refundServiceFee,
+      upheld: opts.upheld,
+    });
+  });
+  // A failed transfer is retried by the cron job (retryFailedTransfers).
+  await payDisputeSplit(disputeId);
+  const money = (n: number) => formatMoney(n, booking.currency as Currency);
+  await announceResolution(
+    booking.id,
+    `The Ajo team reviewed the dispute and split what was held: ${money(split.toTraveller)} to the traveller and ${money(split.toSender)} refunded to the sender. This booking is closed. Note from Ajo: ${note.trim()}`,
+  );
+  if (opts.upheld) await announceLevelChange(booking.trip.travellerId, levelBefore);
 }
 
 async function announceResolution(bookingId: string, body: string) {

@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { TRUST_TIERS, type TrustTier } from "@/lib/domain/trust";
+import { parseMoneyInput } from "@/lib/domain/disputes";
 import * as admin from "@/lib/server/admin";
+import { assert } from "@/lib/server/errors";
 import { ActionError } from "@/lib/server/errors";
 
 async function run(path: string, fn: () => Promise<unknown>) {
@@ -22,11 +24,22 @@ export async function resolveDispute(disputeId: string, form: FormData) {
   const me = await admin.requireAdmin();
   const path = `/admin/disputes/${disputeId}`;
   const note = text(form, "note");
-  await run(path, () =>
-    form.get("outcome") === "refund"
-      ? admin.refundDispute(me, disputeId, note, form.get("includeServiceFee") === "on")
-      : admin.releaseDispute(me, disputeId, note),
-  );
+  const outcome = form.get("outcome");
+  await run(path, async () => {
+    if (outcome === "refund") {
+      return admin.refundDispute(me, disputeId, note, form.get("includeServiceFee") === "on");
+    }
+    if (outcome === "split") {
+      const toTraveller = parseMoneyInput(text(form, "toTraveller"));
+      assert(toTraveller !== null, "Enter the traveller's share as an amount, e.g. 12.50");
+      return admin.splitDispute(me, disputeId, note, {
+        toTraveller,
+        refundServiceFee: form.get("splitServiceFee") === "on",
+        upheld: form.get("upheld") === "on",
+      });
+    }
+    return admin.releaseDispute(me, disputeId, note);
+  });
 }
 
 export async function setTrustTier(userId: string, form: FormData) {
