@@ -3,13 +3,14 @@ import { notFound } from "next/navigation";
 import { resolveDispute } from "../../actions";
 import { DOCUMENT_LABELS } from "@/lib/domain/documents";
 import { MILESTONE_LABELS, unreleasedPayout } from "@/lib/domain/milestones";
-import { refundableAmount, requireAdmin } from "@/lib/server/admin";
+import { requireAdmin } from "@/lib/server/admin";
 import { listMessages, MAX_MESSAGE_LENGTH } from "@/lib/server/messages";
 import { MessageThread } from "@/components/message-thread";
 import { db } from "@/lib/server/db";
 import { levelOf } from "@/lib/domain/levels";
 import { ErrorBanner, Field, formatAt, LocalTime, LevelBadge, Money, PageHeader, Route, StatusBadge, TrustBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { ResolveOptions } from "@/components/resolve-options";
 
 export default async function DisputePage({ params, searchParams }: PageProps<"/admin/disputes/[id]">) {
   const { id } = await params;
@@ -115,55 +116,14 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
       {dispute.status === "OPEN" ? (
         <form action={resolveDispute.bind(null, dispute.id)} className="card space-y-4">
           <h2 className="font-semibold">Resolve</h2>
-          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[input[type=radio]:checked]:border-brand">
-            <input type="radio" name="outcome" value="release" defaultChecked className="mt-1" />
-            <span>
-              <span className="font-medium">Release to traveller</span>
-              <span className="block text-sm text-muted">
-                The claim stands. Pay {money(dispute.milestone.payout)} and resume the journey.
-              </span>
-            </span>
-          </label>
-          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[input[type=radio]:checked]:border-danger">
-            <input type="radio" name="outcome" value="refund" className="mt-1" />
-            <span>
-              <span className="font-medium">Refund sender and end booking</span>
-              <span className="block text-sm text-muted">
-                Refunds {money(refundableAmount(booking, false))} still in escrow
-                ({money(refundableAmount(booking, true))} with the service fee). Counts as an upheld
-                dispute against the traveller.
-              </span>
-              <span className="mt-2 flex items-center gap-2 text-sm">
-                <input type="checkbox" name="includeServiceFee" defaultChecked /> Also refund the Ajo service fee
-              </span>
-            </span>
-          </label>
-          <label className="flex cursor-pointer gap-3 rounded-lg border border-border p-3 has-[input[type=radio]:checked]:border-accent">
-            <input type="radio" name="outcome" value="split" className="mt-1" />
-            <span className="min-w-0 flex-1">
-              <span className="font-medium">Split and end booking</span>
-              <span className="block text-sm text-muted">
-                Pay the traveller part of the {money(unreleasedPayout(booking.milestones))} still held for
-                them and refund the rest to the sender.
-              </span>
-              <span className="mt-2 block">
-                <span className="label text-sm" id="toTravellerLabel">Traveller gets</span>
-                <input
-                  className="input max-w-40"
-                  name="toTraveller"
-                  inputMode="decimal"
-                  placeholder="e.g. 12.50"
-                  aria-labelledby="toTravellerLabel"
-                />
-              </span>
-              <span className="mt-2 flex items-center gap-2 text-sm">
-                <input type="checkbox" name="splitServiceFee" /> Also refund the Ajo service fee ({money(booking.serviceFee)})
-              </span>
-              <span className="mt-1 flex items-center gap-2 text-sm">
-                <input type="checkbox" name="upheld" /> Count as an upheld dispute against the traveller
-              </span>
-            </span>
-          </label>
+          <ResolveOptions
+            currency={booking.currency}
+            travellerName={trip.traveller.name}
+            senderName={request.sender.name}
+            milestonePayout={dispute.milestone.payout}
+            unreleasedPayout={unreleasedPayout(booking.milestones)}
+            serviceFee={booking.serviceFee}
+          />
           <div>
             <label className="label" htmlFor="note">Resolution note (shared with both parties)</label>
             <textarea className="input" id="note" name="note" rows={3} required />

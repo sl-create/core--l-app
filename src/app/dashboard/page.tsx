@@ -12,6 +12,14 @@ export default async function Dashboard() {
       where: { senderId: user.id },
       orderBy: { createdAt: "desc" },
       take: 20,
+      include: {
+        // The booking that is going ahead, if any, so the sender sees who is carrying it.
+        bookings: {
+          where: { status: { in: ["ACCEPTED", "FUNDED", "DISPUTED", "COMPLETED"] } },
+          include: { trip: { include: { traveller: { select: { name: true } } } } },
+          take: 1,
+        },
+      },
     }),
     db.trip.findMany({
       where: { travellerId: user.id },
@@ -88,24 +96,37 @@ export default async function Dashboard() {
           <p className="text-muted">No requests yet.</p>
         ) : (
           <ul className="divide-y divide-border rounded-2xl border border-border bg-surface">
-            {requests.map((r) => (
-              <li key={r.id}>
-                <Link href={`/requests/${r.id}`} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-background">
-                  <span className="font-medium">{DOCUMENT_LABELS[r.documentType]}</span>
-                  <Route origin={r.origin} destination={r.destination} />
-                  <span className="text-sm text-muted">by {formatAt(r.deadline, r.destination)}</span>
-                  <span className="ml-auto"><StatusBadge status={r.status} /></span>
-                </Link>
-              </li>
-            ))}
+            {requests.map((r) => {
+              const booking = r.bookings[0];
+              return (
+                <li key={r.id}>
+                  <Link
+                    href={booking ? `/bookings/${booking.id}` : `/requests/${r.id}`}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4 hover:bg-background"
+                  >
+                    <span className="font-medium">{DOCUMENT_LABELS[r.documentType]}</span>
+                    <Route origin={r.origin} destination={r.destination} />
+                    <span className="ml-auto"><StatusBadge status={r.status} /></span>
+                    <span className="basis-full text-sm text-muted">
+                      {booking
+                        ? `With ${booking.trip.traveller.name} · departs ${formatAt(booking.trip.departureAt, booking.trip.origin)}`
+                        : `Deliver by ${formatAt(r.deadline, r.destination)}`}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold">Your trips</h2>
+        <h2 className="mb-3 text-lg font-semibold">{trips.length ? "Trips you\u2019re flying" : "Travelling soon?"}</h2>
         {trips.length === 0 ? (
-          <p className="text-muted">No trips yet.</p>
+          <p className="text-muted">
+            Flying between Lagos, London or New York? <Link href="/trips/new" className="link">Add your trip</Link>{" "}
+            and earn by carrying a document on the way.
+          </p>
         ) : (
           <ul className="divide-y divide-border rounded-2xl border border-border bg-surface">
             {trips.map((t) => (
