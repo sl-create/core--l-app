@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { senderCancellationRefund, travellerCancellationRefund } from "./cancellation";
 import { corridorFor } from "./locations";
 import { ineligibilityReasons, rankMatches, type MatchableTrip } from "./matching";
-import { milestonePayouts, unreleasedPayout } from "./milestones";
+import { milestoneOpensAt, milestonePayouts, unreleasedPayout } from "./milestones";
 import { quote, serviceFeeFor } from "./pricing";
 import { levelBonus, levelChecks, levelFor, visibleFrom, type TravellerStats } from "./levels";
 import { claimWindowEndsAt, claimWindowHours } from "./urgency";
@@ -296,5 +296,18 @@ describe("split dispute resolutions", () => {
     expect(splitEscrow({ ...base, toTraveller: 0 }).ok).toBe(false);
     expect(splitEscrow({ ...base, toTraveller: 3751 }).ok).toBe(false);
     expect(splitEscrow({ ...base, toTraveller: 12.5 }).ok).toBe(false);
+  });
+});
+
+describe("milestone timing", () => {
+  const trip = { arrivalAt: days(4) };
+
+  it("lets the handover be marked any time", () => {
+    expect(milestoneOpensAt("PICKED_UP", trip)).toBeNull();
+  });
+
+  it("opens landing and delivery shortly before the scheduled arrival", () => {
+    expect(milestoneOpensAt("ARRIVED", trip)).toEqual(new Date(days(4).getTime() - 3 * 3_600_000));
+    expect(milestoneOpensAt("DELIVERED", trip)).toEqual(milestoneOpensAt("ARRIVED", trip));
   });
 });

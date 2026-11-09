@@ -16,7 +16,7 @@ import {
   senderCancellationRefund,
 } from "@/lib/domain/cancellation";
 import { DOCUMENT_LABELS } from "@/lib/domain/documents";
-import { MILESTONE_LABELS } from "@/lib/domain/milestones";
+import { MILESTONE_LABELS, milestoneOpensAt } from "@/lib/domain/milestones";
 import { db } from "@/lib/server/db";
 import { paymentsSimulated } from "@/lib/server/escrow";
 import { listMessages, markRead, MAX_MESSAGE_LENGTH } from "@/lib/server/messages";
@@ -81,6 +81,12 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
       : 0;
   const isResponder = booking.proposedBy === "SENDER" ? isTraveller : isSender;
   const firstPending = booking.milestones.find((m) => m.status === "PENDING");
+  // A milestone that cannot be marked yet (landing, delivery) returns when it opens.
+  const now = new Date();
+  const opensAt = (m: { type: (typeof booking.milestones)[number]["type"] }) => {
+    const at = milestoneOpensAt(m.type, trip);
+    return at && at > now ? at : null;
+  };
   const inProgress = ["FUNDED", "COMPLETED", "DISPUTED"].includes(booking.status);
 
   return (
@@ -237,7 +243,12 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                   </p>
                 )}
 
-                {isTraveller && booking.status === "FUNDED" && m.id === firstPending?.id && (
+                {isTraveller && booking.status === "FUNDED" && m.id === firstPending?.id && opensAt(m) && (
+                  <p className="mt-3 text-sm text-muted">
+                    You can mark this once you land, from {formatAt(opensAt(m)!, trip.destination)}.
+                  </p>
+                )}
+                {isTraveller && booking.status === "FUNDED" && m.id === firstPending?.id && !opensAt(m) && (
                   <form action={claimMilestone.bind(null, booking.id, m.id)} className="mt-3 flex flex-wrap gap-2">
                     <input className="input flex-1" name="note" placeholder="Optional note, e.g. flight number or where you met" />
                     <SubmitButton>Mark as done</SubmitButton>

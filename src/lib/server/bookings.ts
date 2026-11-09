@@ -4,7 +4,7 @@ import { senderCancellationRefund, travellerCancellationRefund } from "@/lib/dom
 import { DOCUMENT_LABELS } from "@/lib/domain/documents";
 import { formatMoney, LOCATION_LABELS, type Currency } from "@/lib/domain/locations";
 import { ineligibilityReasons } from "@/lib/domain/matching";
-import { MILESTONE_LABELS, MILESTONE_TYPES, milestonePayouts } from "@/lib/domain/milestones";
+import { MILESTONE_LABELS, MILESTONE_TYPES, milestoneOpensAt, milestonePayouts } from "@/lib/domain/milestones";
 import { quote } from "@/lib/domain/pricing";
 import { levelBonus, levelOf, visibleFrom } from "@/lib/domain/levels";
 import { claimWindowEndsAt } from "@/lib/domain/urgency";
@@ -308,6 +308,8 @@ export async function claimMilestone(travellerId: string, milestoneId: string, n
   assert(!earlierPending, "Claim the earlier milestones first");
 
   const now = new Date();
+  const opensAt = milestoneOpensAt(milestone.type, milestone.booking.trip);
+  assert(!opensAt || now >= opensAt, "You can mark this once your flight has landed.");
   const claimExpiresAt = claimWindowEndsAt(milestone.booking.request.deadline, now);
   const { count } = await db.milestone.updateMany({
     where: { id: milestoneId, status: "PENDING" },

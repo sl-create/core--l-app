@@ -36,3 +36,15 @@ export function milestonePayouts(travellerPayout: number): Record<MilestoneType,
 export function unreleasedPayout(milestones: { status: string; payout: number }[]): number {
   return milestones.filter((m) => m.status !== "CONFIRMED").reduce((sum, m) => sum + m.payout, 0);
 }
+
+/** Flights can land early, so "landed" opens this long before the scheduled arrival. */
+export const EARLY_LANDING_HOURS = 3;
+
+/**
+ * When the traveller may mark a milestone as done, or null if any time once paid.
+ * The handover can happen early, but nobody can land or deliver before the flight does.
+ */
+export function milestoneOpensAt(type: MilestoneType, trip: { arrivalAt: Date }): Date | null {
+  if (type === "PICKED_UP") return null;
+  return new Date(trip.arrivalAt.getTime() - EARLY_LANDING_HOURS * 3_600_000);
+}

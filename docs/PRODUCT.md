@@ -68,7 +68,9 @@ as the deadline gets closer.
 | Traveller landed              | 25%                    |
 | Delivered to recipient        | 50%                    |
 
-The traveller claims each milestone in order. The sender confirms (which releases the
+The traveller claims each milestone in order. The handover can be claimed any time after
+payment; "landed" and "delivered" open 3 hours before the trip's scheduled arrival, so
+nobody can claim to have landed before flying. The sender confirms (which releases the
 funds) or disputes it. An unanswered claim confirms automatically when its window ends.
 A dispute freezes the booking for manual review.
 
