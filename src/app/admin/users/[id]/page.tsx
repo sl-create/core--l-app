@@ -4,6 +4,7 @@ import { setElderApproval, setSuspended, setTrustTier } from "../../actions";
 import { averageRating, levelOf } from "@/lib/domain/levels";
 import { LevelProgress } from "@/components/levels";
 import { TRUST_TIER_LABELS, TRUST_TIERS } from "@/lib/domain/trust";
+import { requireAdmin } from "@/lib/server/admin";
 import { db } from "@/lib/server/db";
 import { ErrorBanner, Field, formatDay, LocalTime, LevelBadge, PageHeader, StatusBadge, TrustBadge } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -13,6 +14,8 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
   const { error } = await searchParams;
   const user = await db.user.findUnique({ where: { id } });
   if (!user) notFound();
+  // Admins cannot verify, approve or suspend themselves.
+  const isMe = user.id === (await requireAdmin()).id;
   const level = levelOf(user);
   const avg = averageRating(user);
   const [bookings, log] = await Promise.all([
@@ -64,18 +67,24 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
         <section className="card">
           <h2 className="mb-3 font-semibold">Level progress</h2>
           <LevelProgress level={level} stats={{ ...user, elderApproved: user.elderApprovedAt !== null }} />
-          <form action={setElderApproval.bind(null, user.id, !user.elderApprovedAt)} className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
+          {!isMe && <form action={setElderApproval.bind(null, user.id, !user.elderApprovedAt)} className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
             <input className="input flex-1" name="reason" required placeholder="Reason (logged)" />
             <SubmitButton variant={user.elderApprovedAt ? "danger" : "secondary"}>
               {user.elderApprovedAt ? "Revoke Àgbà approval" : "Approve for Àgbà"}
             </SubmitButton>
-          </form>
+          </form>}
           <p className="hint">
             Approval is one of the Àgbà requirements. They still need to meet the others to reach the level.
           </p>
         </section>
       )}
 
+      {isMe ? (
+        <p className="card text-sm text-muted">
+          This is your own account. Another admin needs to change your verification, Àgbà
+          approval or suspension.
+        </p>
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2">
         <form action={setTrustTier.bind(null, user.id)} className="card space-y-3">
           <h2 className="font-semibold">Trust tier</h2>
@@ -96,6 +105,7 @@ export default async function AdminUserPage({ params, searchParams }: PageProps<
           </SubmitButton>
         </form>
       </div>
+      )}
 
       <section>
         <h2 className="mb-3 font-semibold">Bookings</h2>

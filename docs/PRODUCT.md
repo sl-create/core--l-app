@@ -129,6 +129,9 @@ Verified" tier is folded into Olóòótọ́ (and the migration converts existin
     ends. Counts as an upheld dispute only if the admin ticks it. A failed payout to the
     traveller is retried by the cron job.
 - Money already released for confirmed milestones is never clawed back.
+- An admin who is the sender or traveller on a booking can talk in its thread (under their
+  own name) but cannot resolve its dispute. Admins also cannot verify, approve or suspend
+  themselves. Another admin has to.
 - Admins can change trust tiers and suspend accounts. Every admin action is written to an
   audit log with a required reason.
 

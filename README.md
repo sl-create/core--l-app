@@ -101,6 +101,8 @@ sooner. `/levels` explains it to travellers, and `/travellers/:id` is the public
 ## Admin
 
 Admins see an **Admin** link in the header, and everyone else gets a 404 at `/admin`.
+Admins cannot resolve disputes on their own bookings or change their own verification,
+Àgbà approval or suspension, so a live site needs at least two admins.
 Grant the role by listing the email in `ADMIN_EMAILS` (applied at their next sign-in), or with
 `npm run admin:grant -- you@example.com` after that person has signed in once.
 

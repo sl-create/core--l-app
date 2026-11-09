@@ -35,6 +35,8 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
   const { booking } = dispute;
   const { request, trip } = booking;
   const money = (n: number) => <Money amount={n} currency={booking.currency} />;
+  // Admins who are part of the booking can talk in it, but not decide it.
+  const myRole = request.senderId === me.id ? "sender" : trip.travellerId === me.id ? "traveller" : null;
   const party = (u: typeof request.sender, role: string) => (
     <div className="card">
       <p className="text-xs uppercase tracking-wide text-muted">{role}</p>
@@ -110,10 +112,21 @@ export default async function DisputePage({ params, searchParams }: PageProps<"/
           canPost
           maxLength={MAX_MESSAGE_LENGTH}
         />
-        <p className="hint">Your messages appear to both parties as Ajo support.</p>
+        <p className="hint">
+          {myRole
+            ? `You're the ${myRole} on this booking, so your messages appear under your own name.`
+            : "Your messages appear to both parties as Ajo support."}
+        </p>
       </section>
 
-      {dispute.status === "OPEN" ? (
+      {dispute.status === "OPEN" && myRole ? (
+        <section className="card">
+          <h2 className="mb-2 font-semibold">Resolve</h2>
+          <p className="text-sm text-muted">
+            You&apos;re the {myRole} on this booking, so another admin needs to resolve this dispute.
+          </p>
+        </section>
+      ) : dispute.status === "OPEN" ? (
         <form action={resolveDispute.bind(null, dispute.id)} className="card space-y-4">
           <h2 className="font-semibold">Resolve</h2>
           <ResolveOptions

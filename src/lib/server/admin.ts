@@ -31,11 +31,25 @@ async function audit(
   });
 }
 
+/** An admin may not decide a dispute on a booking they are part of. */
+async function loadDisputeForAdmin(admin: User, disputeId: string) {
+  const dispute = await db.dispute.findUnique({
+    where: { id: disputeId },
+    include: { booking: { include: { milestones: true, trip: true, request: true } } },
+  });
+  assert(dispute, "Dispute not found");
+  const { request, trip } = dispute.booking;
+  assert(
+    request.senderId !== admin.id && trip.travellerId !== admin.id,
+    "You are part of this booking, so another admin needs to resolve it.",
+  );
+  return dispute;
+}
+
 /** The traveller's claim stands: pay the disputed milestone and resume the journey. */
 export async function releaseDispute(admin: User, disputeId: string, note: string) {
   assert(note.trim(), "Add a resolution note");
-  const dispute = await db.dispute.findUnique({ where: { id: disputeId } });
-  assert(dispute, "Dispute not found");
+  const dispute = await loadDisputeForAdmin(admin, disputeId);
   await db.$transaction(async (tx) => {
     const { count } = await tx.dispute.updateMany({
       where: { id: disputeId, status: "OPEN" },
@@ -76,11 +90,8 @@ export async function refundDispute(
   includeServiceFee: boolean,
 ) {
   assert(note.trim(), "Add a resolution note");
-  const dispute = await db.dispute.findUnique({
-    where: { id: disputeId },
-    include: { booking: { include: { milestones: true, trip: true } } },
-  });
-  assert(dispute && dispute.status === "OPEN", "This dispute is already resolved");
+  const dispute = await loadDisputeForAdmin(admin, disputeId);
+  assert(dispute.status === "OPEN", "This dispute is already resolved");
   const { booking } = dispute;
   const amount = refundableAmount(booking, includeServiceFee);
 
@@ -148,11 +159,8 @@ export async function splitDispute(
   opts: { toTraveller: number; refundServiceFee: boolean; upheld: boolean },
 ) {
   assert(note.trim(), "Add a resolution note");
-  const dispute = await db.dispute.findUnique({
-    where: { id: disputeId },
-    include: { booking: { include: { milestones: true, trip: true } } },
-  });
-  assert(dispute && dispute.status === "OPEN", "This dispute is already resolved");
+  const dispute = await loadDisputeForAdmin(admin, disputeId);
+  assert(dispute.status === "OPEN", "This dispute is already resolved");
   const { booking } = dispute;
   const split = splitEscrow({
     unreleasedPayout: unreleasedPayout(booking.milestones),
@@ -213,6 +221,7 @@ async function announceResolution(bookingId: string, body: string) {
 
 export async function setTrustTier(admin: User, userId: string, tier: TrustTier, reason: string) {
   assert(reason.trim(), "Add a reason");
+  assert(userId !== admin.id, "Another admin needs to change your own verification");
   await db.$transaction(async (tx) => {
     const user = await tx.user.findUnique({ where: { id: userId } });
     assert(user, "User not found");
@@ -243,6 +252,7 @@ export async function setSuspended(admin: User, userId: string, suspended: boole
 /** Àgbà is the one level that needs a person to sign off on it. */
 export async function setElderApproval(admin: User, userId: string, approved: boolean, reason: string) {
   assert(reason.trim(), "Add a reason");
+  assert(userId !== admin.id, "Another admin needs to approve your own level");
   const before = await currentLevel(userId);
   await db.$transaction(async (tx) => {
     await tx.user.update({
